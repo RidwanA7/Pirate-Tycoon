@@ -2,10 +2,17 @@ import time
 import pygame
 from buildings import Building
 class Dock(Building):
-    def __init__(self, size, position):
+    def __init__(self, size, position, orientation):
         super().__init__(position)
         self.image = pygame.image.load(r"C:\Users\Study\PycharmProjects\NEA Images\Wp3TJeiWRvK6ltBUFT4DdQ.jpg")
-        self.image = pygame.transform.scale(self.image, (100, 50))
+
+        if orientation == "vertical":
+            self.image = pygame.transform.scale(self.image, (50, 100))
+            self.rect = self.image.get_rect(topleft=position)
+            self.rect.width, self.rect.height = self.rect.height, self.rect.width  # Rotate the rect dimensions
+        else:
+            self.image = pygame.transform.scale(self.image, (100, 50))
+
         self.rect = self.image.get_rect(topleft=position)
         self.size = size
         self.goldRate = self.setGoldRate()
@@ -38,13 +45,24 @@ class Dock(Building):
             return True
         return False
 
-    def drawUpgrade(self, screen, cameraX, cameraY):
-        # Draw the upgradebox if visible
+    def drawUpgrade(self, screen, cameraX, cameraY, zoomLevel):
         if self.visibleUpgradeBox:
-            pygame.draw.rect(screen, (200, 200, 200), (self.rect.x - 25 + cameraX, self.rect.y - 30 + cameraY, 200, 25))
-            font = pygame.font.SysFont(None, 24)
+            boxWidth = int(200 * zoomLevel)
+            boxHeight = int(25 * zoomLevel)
+            adjustedX = self.rect.centerx * zoomLevel - boxWidth // 2
+            adjustedY = self.rect.top * zoomLevel - boxHeight - 10 * zoomLevel  
+
+            pygame.draw.rect(screen, (200, 200, 200), 
+                            (adjustedX + cameraX, adjustedY + cameraY, boxWidth, boxHeight))
+
+            fontSize = int(24 * zoomLevel)
+            font = pygame.font.SysFont(None, fontSize)
+
             text = font.render(f"Upgrade {self.upgradeCost}$", True, (0, 0, 0))
-            screen.blit(text, (self.rect.x -25 + cameraX, self.rect.y - 30 + cameraY))
+            textRect = text.get_rect(center=(adjustedX + boxWidth / 2 + cameraX, 
+                                            adjustedY + boxHeight / 2 + cameraY))
+            screen.blit(text, textRect)
+
 
     def toggleUpgrade(self, mousePos):
         # If dock is clicked, show the upgrade box
