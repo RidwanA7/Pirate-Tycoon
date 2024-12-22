@@ -81,29 +81,55 @@ class Pirate:
                     self.payment = self.pay(object)
             self.move()
         return self.payment
-    def drawSatisfactionBar(self, screen, cameraX, cameraY):
-        barX = self.position[0] + cameraX - 25
-        barY = self.position[1] + cameraY - 40
-        barWidth = 50
-        barHeight = 8
-        spacing = 2
-        # Calculate filled width for hunger and sleep bars
+    def drawSatisfactionBar(self, screen, cameraX, cameraY, zoomLevel):
+        
+        barX = (self.position[0] * zoomLevel) + cameraX - (25 * zoomLevel)
+        barY = (self.position[1] * zoomLevel) + cameraY - (40 * zoomLevel)
+
+        
+        barWidth = int(50 * zoomLevel)
+        barHeight = int(8 * zoomLevel)
+        spacing = int(2 * zoomLevel)  # Space between bars, also scaled
+
+        # Calculate filled width for hunger and sleep bars based on zoomed bar width
         hungerFillWidth = int((self.hunger / 100) * barWidth)
         sleepFillWidth = int((self.sleep / 100) * barWidth)
+
+        # Draw hunger bar
         pygame.draw.rect(screen, (100, 100, 100), (barX, barY, barWidth, barHeight))
         pygame.draw.rect(screen, (255, 0, 0), (barX, barY, hungerFillWidth, barHeight))
+
+        # Draw sleep bar
         pygame.draw.rect(screen, (100, 100, 100), (barX, barY + barHeight + spacing, barWidth, barHeight))
         pygame.draw.rect(screen, (0, 0, 255), (barX, barY + barHeight + spacing, sleepFillWidth, barHeight))
-        font = pygame.font.Font(None, 20)  # Use default font, size 20
+
+        # Adjust font size based on zoom level
+        fontSize = int(20 * zoomLevel)  # Scale font size
+        font = pygame.font.Font(None, fontSize)
+
+        # Render labels with adjusted size
         hungerLabel = font.render("Hunger", True, (255, 255, 255))  # White text
         sleepLabel = font.render("Sleep", True, (255, 255, 255))  # White text
-        screen.blit(hungerLabel, (barX - hungerLabel.get_width() - 5, barY))
-        screen.blit(sleepLabel, (barX - sleepLabel.get_width() - 5, barY + barHeight + spacing))
 
-    def draw(self, screen, cameraX, cameraY):
+        # Adjust label positions based on zoom
+        screen.blit(hungerLabel, (barX - hungerLabel.get_width() - int(5 * zoomLevel), barY))
+        screen.blit(sleepLabel, (barX - sleepLabel.get_width() - int(5 * zoomLevel), barY + barHeight + spacing))
+
+    def draw(self, screen, cameraX, cameraY, zoomLevel):
         if self.active:
-            screen.blit(self.image, (self.position[0] + cameraX - self.image.get_width() // 2,
-                                     self.position[1] + cameraY - self.image.get_height() // 2))
+            # Scale the image based on zoom factor
+            scaledImage = pygame.transform.scale(self.image,
+                                                 (int(self.image.get_width() * zoomLevel),
+                                                  int(self.image.get_height() * zoomLevel)))
 
-            self.drawSatisfactionBar(screen, cameraX, cameraY)
+            # Adjust position based on zoom factor
+            scaledX = (self.position[0] * zoomLevel) + cameraX - scaledImage.get_width() // 2
+            scaledY = (self.position[1] * zoomLevel) + cameraY - scaledImage.get_height() // 2
+
+            # Draw the scaled image at the adjusted position
+            screen.blit(scaledImage, (scaledX, scaledY))
+
+            # Adjust the satisfaction bar position based on zoom
+            self.drawSatisfactionBar(screen, cameraX, cameraY, zoomLevel)
+
 
