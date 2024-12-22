@@ -14,13 +14,27 @@ class Building(pygame.sprite.Sprite):
         if self.rect.collidepoint(mousePos):
             self.visibleUpgradeBox = not self.visibleUpgradeBox
 
-    def drawUpgrade(self, screen, cameraX, cameraY):
-        # Draw the upgradebox if visible
+    def drawUpgrade(self, screen, cameraX, cameraY, zoomLevel):
+        # Draw the upgrade box if visible
         if self.visibleUpgradeBox:
-            pygame.draw.rect(screen, (200, 200, 200), (self.rect.x - 25 + cameraX, self.rect.y - 30 + cameraY, 200, 25))
-            font = pygame.font.SysFont(None, 24)
+            # Adjust position and dimensions for zoom
+            adjustedX = self.rect.x * zoomLevel - 25 * zoomLevel
+            adjustedY = self.rect.y * zoomLevel - 30 * zoomLevel
+            boxWidth = int(200 * zoomLevel)
+            boxHeight = int(25 * zoomLevel)
+
+            # Draw the scaled upgrade box
+            pygame.draw.rect(screen, (200, 200, 200), (adjustedX + cameraX, adjustedY + cameraY, boxWidth, boxHeight))
+
+            # Adjust font size for zoom
+            fontSize = int(24 * zoomLevel)
+            font = pygame.font.SysFont(None, fontSize)
+
+            # Render and position text
             text = font.render(f"Upgrade {self.upgradeCost}$", True, (0, 0, 0))
-            screen.blit(text, (self.rect.x -25 + cameraX, self.rect.y - 30 + cameraY))
+            textX = adjustedX + 5 * zoomLevel  # Adjust text padding for zoom
+            textY = adjustedY + 5 * zoomLevel
+            screen.blit(text, (textX + cameraX, textY + cameraY))
 
     def upgradeBoxClicked(self, mousePos, gold):
         if self.visibleUpgradeBox:
@@ -29,7 +43,7 @@ class Building(pygame.sprite.Sprite):
 
     def upgrade(self):
         self.level += 1
-        # Implement upgrade logic common to all buildings
+        pass
 
 
 
