@@ -20,14 +20,14 @@ class Building(pygame.sprite.Sprite):
             # Adjust position and dimensions for zoom
             adjustedX = self.rect.x * zoomLevel - 25 * zoomLevel
             adjustedY = self.rect.y * zoomLevel - 30 * zoomLevel
-            boxWidth = int(200 * zoomLevel)
-            boxHeight = int(25 * zoomLevel)
+            boxWidth = int(40 * zoomLevel)
+            boxHeight = int(10 * zoomLevel)
 
             # Draw the scaled upgrade box
             pygame.draw.rect(screen, (200, 200, 200), (adjustedX + cameraX, adjustedY + cameraY, boxWidth, boxHeight))
 
             # Adjust font size for zoom
-            fontSize = int(24 * zoomLevel)
+            fontSize = int(8 * zoomLevel)
             font = pygame.font.SysFont(None, fontSize)
 
             # Render and position text
