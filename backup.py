@@ -600,13 +600,14 @@ def moveFarmer(placedItems, pathGrid, screen, cameraX, cameraY):
                         farm = farm_item["item"]
                         if not farmer.isAtFarm(farm):
                             farmer.moveTowards(farm, pathGrid)
+                            print("moving to farm")
                         else:
                             # Get crops from the farm group
                             for group in farmGroups:
                                 if farm in group.farms:
                                     farmer.getCrops(group)
                                     break
-                        farmer.draw(screen, cameraX, cameraY)
+                        
                         break  # Stop after targeting one farm
 
             else:  # If carrying crops, move to the cookhouse
@@ -620,6 +621,7 @@ def moveFarmer(placedItems, pathGrid, screen, cameraX, cameraY):
                             farmer.carryingCrops = False  # Reset carrying state
                         farmer.draw(screen, cameraX, cameraY)
                         break  # Stop after targeting one cookhouse
+            farmer.draw(screen, cameraX, cameraY)
 
 
 run = True
