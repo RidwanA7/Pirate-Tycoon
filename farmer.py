@@ -21,46 +21,30 @@ class Farmer(pygame.sprite.Sprite):
         y_diff = targetPos[1] - currentPos[1]
         x_step = y_step = 0
 
-        if x_diff > 0:
+        if y_diff > 0:
+            y_step = 1
+            nextPos = (currentPos[0] , currentPos[1] + y_step)
+            if pathGrid.get(nextPos, False):
+                self.position = nextPos
+                self.rect.center = self.position
+        elif y_diff < 0:
+            y_step = -1
+            nextPos = (currentPos[0] , currentPos[1] + y_step)
+            if pathGrid.get(nextPos, False):
+                self.position = nextPos
+                self.rect.center = self.position
+        elif x_diff > 0:
             x_step = 1
             nextPos = (currentPos[0] + x_step, currentPos[1])
             if pathGrid.get(nextPos, False):
                 self.position = nextPos
                 self.rect.center = self.position
-            elif y_diff > 0:
-                y_step = 1
-                nextPos = (currentPos[0], currentPos[1] + y_step)
-                print("moving up", nextPos)
-                if pathGrid.get(nextPos, False):
-                    self.position = nextPos
-                    self.rect.center = self.position
-            elif y_diff < 0:
-                y_step = -1
-                nextPos = (currentPos[0], currentPos[1] + y_step)
-                print("moving down", nextPos)
-                if pathGrid.get(nextPos, False):
-                    self.position = nextPos
-                    self.rect.center = self.position
-
         elif x_diff < 0:
             x_step = -1
             nextPos = (currentPos[0] + x_step, currentPos[1])
             if pathGrid.get(nextPos, False):
                 self.position = nextPos
                 self.rect.center = self.position
-            elif y_diff < 0:
-                y_step = -1
-                nextPos = (currentPos[0], currentPos[1] + y_step)
-                if pathGrid.get(nextPos, False):
-                    self.position = nextPos
-                    self.rect.center = self.position
-            elif y_diff > 0:
-                y_step = 1
-                nextPos = (currentPos[0], currentPos[1] + y_step)
-                if pathGrid.get(nextPos, False):
-                    self.position = nextPos
-                    self.rect.center = self.position
-        
             
     
     def isAtFarm(self, farm):
@@ -93,7 +77,7 @@ class Farmer(pygame.sprite.Sprite):
         y_diff = abs(self.position[1] - cookhouse.position[1])
 
         # Check if the farmer is within 20 pixels of the cookhouse
-        return x_diff <= 20 and y_diff <= 20
+        return x_diff <= 5 and y_diff <= 5
     
     def dropCrops(self, cookhouse):
         if self.carryingCrops and isinstance(cookhouse, Cookhouse):
