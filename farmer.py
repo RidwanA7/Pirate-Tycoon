@@ -22,30 +22,33 @@ class Farmer(pygame.sprite.Sprite):
         x_step = y_step = 0
 
         if y_diff > 0:
+            print("moving down")
             y_step = 1
             nextPos = (currentPos[0] , currentPos[1] + y_step)
             if pathGrid.get(nextPos, False):
                 self.position = nextPos
                 self.rect.center = self.position
         elif y_diff < 0:
+            print("moving up")
             y_step = -1
             nextPos = (currentPos[0] , currentPos[1] + y_step)
             if pathGrid.get(nextPos, False):
                 self.position = nextPos
                 self.rect.center = self.position
-        elif x_diff > 0:
+        if x_diff > 0:
+            print("moving right")
             x_step = 1
             nextPos = (currentPos[0] + x_step, currentPos[1])
             if pathGrid.get(nextPos, False):
                 self.position = nextPos
                 self.rect.center = self.position
         elif x_diff < 0:
+            print("moving left")
             x_step = -1
             nextPos = (currentPos[0] + x_step, currentPos[1])
             if pathGrid.get(nextPos, False):
                 self.position = nextPos
                 self.rect.center = self.position
-            
     
     def isAtFarm(self, farm):
             # Calculate the distance between the farmer and the farm
