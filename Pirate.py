@@ -1,12 +1,13 @@
 import pygame
 import random
 import time
+from restuarant import Restaurant
 
 class Pirate:
     def __init__(self, position, payment):
         self.position = position
         self.active = False  # Becomes active when the boat reaches the entrance dock
-        self.speed = 2
+        self.speed = 0.25
         self.direction = random.choice([(1, 0), (-1, 0), (0, 1), (0, -1)])
         self.inCooldown = False
         self.objectStopTime = None
@@ -18,7 +19,7 @@ class Pirate:
         self.satisfaction = 50
         self.satisfactionTimeDecrease = time.time()
         self.image = pygame.image.load(r'C:\Users\Study\Pirate Tycoon\__pycache__\1675450476_luffy-sprite.png')
-        self.image = pygame.transform.scale(self.image, (50, 50))
+        self.image = pygame.transform.scale(self.image, (10, 10))
         self.rect = self.image.get_rect(center=self.position)
 
     def moveTowards(self, targetPosition):
@@ -43,17 +44,24 @@ class Pirate:
         if self.objectCooldownEnd and time.time() > self.objectCooldownEnd:
             self.inCooldown = False
 
-    def pay(self, object):
+    def pay(self, objectType, object):
         self.inCooldown = True
         self.objectCooldownEnd = time.time() + 10  # 10-second cooldown
         self.nearObject = False
         self.objectStopTime = None
-        if object == "Tent":
+        print(f"Object type: {objectType}")
+        if objectType == "Tent":
             self.payment = 400
             self.sleep += 10
-        elif object == "Restaurant":
-            self.payment = 800
-            self.hunger += 10
+        elif objectType == "Restaurant":
+            print(f"This should be the restaurant object: {objectType}")
+            if object.food >= 2:
+                self.payment = 800
+                self.hunger += 10
+                object.food -= 2
+            else:
+                self.payment = 0
+        print(f"Payment: {self.payment}")
         return self.payment
 
     def move(self):
@@ -68,7 +76,7 @@ class Pirate:
         self.position[0] = max(0, min(self.position[0], 800))
         self.position[1] = max(0, min(self.position[1], 600))
 
-    def update(self, object):
+    def update(self, objectType, object):
         self.payment = 0
         self.updatePirateStats()
         self.checkCooldown()
@@ -78,17 +86,18 @@ class Pirate:
                 if self.objectStopTime is None:  # Start the 5-second wait at the object
                     self.objectStopTime = time.time()
                 elif time.time() - self.objectStopTime >= 5:
-                    self.payment = self.pay(object)
+                    self.payment = self.pay(objectType, object)
             self.move()
         return self.payment
+    
     def drawSatisfactionBar(self, screen, cameraX, cameraY, zoomLevel):
         
         barX = (self.position[0] * zoomLevel) + cameraX - (25 * zoomLevel)
         barY = (self.position[1] * zoomLevel) + cameraY - (40 * zoomLevel)
 
         
-        barWidth = int(50 * zoomLevel)
-        barHeight = int(8 * zoomLevel)
+        barWidth = int(25 * zoomLevel)
+        barHeight = int(4 * zoomLevel)
         spacing = int(2 * zoomLevel)  # Space between bars, also scaled
 
         # Calculate filled width for hunger and sleep bars based on zoomed bar width
@@ -104,11 +113,11 @@ class Pirate:
         pygame.draw.rect(screen, (0, 0, 255), (barX, barY + barHeight + spacing, sleepFillWidth, barHeight))
 
         # Adjust font size based on zoom level
-        fontSize = int(20 * zoomLevel)  # Scale font size
+        fontSize = int(10 * zoomLevel)  # Scale font size
         font = pygame.font.Font(None, fontSize)
 
         # Render labels with adjusted size
-        hungerLabel = font.render("Hunger", True, (255, 255, 255))  # White text
+        hungerLabel = font.render("Food", True, (255, 255, 255))  # White text
         sleepLabel = font.render("Sleep", True, (255, 255, 255))  # White text
 
         # Adjust label positions based on zoom
