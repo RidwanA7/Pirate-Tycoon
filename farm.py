@@ -26,18 +26,26 @@ class Farm(Building):
 class FarmGroup:
     def __init__(self):
         self.farms = []  # List of farms in this group
+        self.coordinates = []
         self.cropCount = 0  # Shared crop count
         self.lastCropTime = pygame.time.get_ticks()  # Time tracker for crop generation
         self.label = "FarmGroup"
+        self.baseSpeed = 1
+        self.speed = 1
 
     def addFarm(self, farm):
         if farm not in self.farms:
             self.farms.append(farm)
+            self.coordinates.append((farm.rect.centerx, farm.rect.centery))
             farm.group = self  # Link the farm to this group
+    
+    def getCoordinates(self):
+        return self.coordinates
 
-    def generateCrops(self):
+    def generateCrops(self, speedMultiplier):
         currentTime = pygame.time.get_ticks()
-        if currentTime - self.lastCropTime >= 1000:  # Generate crops every second
+        adjustedSpeed = self.baseSpeed * speedMultiplier  # Adjust crop generation speed by multiplier
+        if currentTime - self.lastCropTime >= 1000 / adjustedSpeed:  # Generate crops every second
             self.cropCount += len(self.farms)
             self.lastCropTime = currentTime
 
