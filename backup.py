@@ -11,6 +11,7 @@ from farmer import Farmer
 from pygameFunctions import setAutoUpdate, updateDisplay
 import time
 from path import Path
+from datetime import datetime, timedelta
 
 #Game Settings
 pygame.init()
@@ -29,6 +30,26 @@ island = pygame.Surface((islandWidth, islandHeight))
 island.fill((0, 100, 0))
 cameraX, cameraY = 0, 0
 speed = 5
+
+#speed settings
+slow = 5
+medium = 3
+fast = 1
+
+dayLength = slow
+speedMultipliers = { slow: 1.0, medium: 2.0, fast: 4.0 } 
+speedMultiplier = speedMultipliers[dayLength]
+speedLabels = { slow: "Slow", medium: "Medium", fast: "Fast" }
+# Speed settings positions
+speedButtons = {
+    "Slow": pygame.Rect(700, 10, 80, 30),
+    "Medium": pygame.Rect(700, 50, 80, 30),
+    "Fast": pygame.Rect(700, 90, 80, 30),
+}
+
+#date/time
+currentDate = datetime(1500, 1, 1)
+dayStartTime = time.time()
 
 screen = pygame.display.set_mode((screenWidth, screenHeight))
 pygame.display.set_caption("Pirate Tycoon")
@@ -84,6 +105,10 @@ menuItems = [
 
 def handleMenuClicks(mouseX, mouseY, adjustedMouseX, adjustedMouseY, gold, noOfItems, selectedItem, menuItems, isDock, islandWidth, islandHeight, gridSize, dockBoats):
     # Check if the mouse is clicked on a menu item
+    for label, rect in speedButtons.items():
+        if rect.collidepoint(mouseX, mouseY):
+            return gold, placedItems, selectedItem, isDock, noOfItems  # Skip item placement if inside speed button
+        
     for item in menuItems:
         if item["rect"].collidepoint(mouseX, mouseY):
             selectedItem = item["item"]
@@ -182,6 +207,48 @@ def handleMenuClicks(mouseX, mouseY, adjustedMouseX, adjustedMouseY, gold, noOfI
                     
     return gold, placedItems, selectedItem, isDock, noOfItems
 
+def displayTimeSpeedSettings():
+    for label, rect in speedButtons.items():
+        # Draw button background
+        pygame.draw.rect(screen, Green if speedLabels[dayLength] == label else Brown, rect)
+        # Render the text
+        textSurface = font.render(label, True, White)
+        textRect = textSurface.get_rect(center=rect.center)
+        screen.blit(textSurface, textRect)
+
+def handleSpeedButtonClick(mouseX, mouseY):
+    global dayLength
+    global speedMultiplier
+    global speedMultipliers
+    for label, rect in speedButtons.items():
+        if rect.collidepoint(mouseX, mouseY):
+            # Update the timespeed based on the clicked button
+            if label == "Slow":
+                dayLength = slow
+                speedMultiplier = speedMultipliers[dayLength]
+            elif label == "Medium":
+                dayLength = medium
+                speedMultiplier = speedMultipliers[dayLength]
+            elif label == "Fast":
+                dayLength = fast
+                speedMultiplier = speedMultipliers[dayLength]
+            break
+
+
+def updateDate():
+    global currentDate, dayStartTime
+    currentTime = time.time()
+    elapsedTime = currentTime - dayStartTime
+
+    if elapsedTime >= dayLength:
+        currentDate += timedelta(days=1)
+        dayStartTime = currentTime
+
+def displayDate(screen, font):
+    dateText = currentDate.strftime("%B %d, %Y")
+    dateSurface = font.render(dateText, True, White)
+    screen.blit(dateSurface, (300, 10))
+
 def showFloatingTexts(screen, floatingTexts, cameraX, cameraY, font):
     currentTime = time.time()   
     for text in floatingTexts[:]:  # Iterate over a copy
@@ -191,6 +258,16 @@ def showFloatingTexts(screen, floatingTexts, cameraX, cameraY, font):
         else:
             floatingTexts.remove(text)  # Remove expired texts
 
+def updateSpeeds(boatAndPirate, placedItems, speedMultiplier):
+    for pirate,boat in boatAndPirate:
+        pirate.speed =  pirate.baseSpeed * speedMultiplier 
+        boat.speed = boat.baseSpeed * speedMultiplier
+    for farmer in placedItems:
+        if isinstance(farmer["item"], Farmer):
+            farmer = farmer["item"]
+            farmer.speed = farmer.baseSpeed * speedMultiplier
+        
+    
 def cameraMovement(keys, cameraX, cameraY, speed):
     if keys[pygame.K_LEFT]:
         cameraX += speed
@@ -245,19 +322,19 @@ def drawDock(cameraX, cameraY, dock, orientation, scaledX, scaledY, zoomLevel, i
     labelRect = dockLabel.get_rect(center=rotatedRect.center)
     screen.blit(dockLabel, labelRect)
 
-def generateGoldAtDock(placedItems, gold, cameraX, cameraY, floatingTexts, screen):
+def generateGoldAtDock(placedItems, gold, cameraX, cameraY, floatingTexts, screen, speedMultiplier):
     currentTime = time.time()
     for item in placedItems:
         dock = item["item"] if isinstance(item["item"], Dock) else None
         if dock:
-            if dock.isTimeForReturn():
+            if dock.isTimeForReturn(speedMultiplier):
                 gold += dock.goldRate
                 dockX, dockY = item["pos"]
                 floatingTexts.append({
                     "text": f"+{dock.goldRate}$",
                     "x": dockX,
                     "y": dockY - 20,
-                    "expiration": currentTime + 0.5  # 3 seconds from now
+                    "expiration": (currentTime + 0.5)  # 3 seconds from now
                 })
         # Render floating texts
         for text in floatingTexts[:]:  # Iterate over a copy to safely modify the list
@@ -399,16 +476,16 @@ def findClosestObject(placedItems, pirate):
                     objectType = item["item"].label
     return closestObjectLocation, objectType, boatAndPirate, object
 
-def piratePayment(pirate, gold, objectType, object):
+def piratePayment(pirate, gold, objectType, object, speedMultiplier):
     currentTime = time.time()
-    payment = pirate.update(objectType, object)
+    payment = pirate.update(objectType, object, speedMultiplier)
     if payment > 0:
         gold += payment
         floatingTexts.append({"text": f"+ {payment}$", "x": object.position[0], "y": object.position[1], "expiration": currentTime + 1})
     return gold, boatAndPirate
 
 
-def updatePirates(boatAndPirate, placedItems, gold):
+def updatePirates(boatAndPirate, placedItems, gold, speedMutiplier):
     for boat, pirate in boatAndPirate:
         closestObjectLocation, objectType, boatAndPirate, object = findClosestObject(placedItems, pirate)
 
@@ -417,7 +494,7 @@ def updatePirates(boatAndPirate, placedItems, gold):
             pirate.moveTowards(closestObjectLocation)
         else:
             pirate.nearObject = False
-        gold, boatAndPirate = piratePayment(pirate, gold, objectType, object)
+        gold, boatAndPirate = piratePayment(pirate, gold, objectType, object, speedMultiplier)
         pirate.draw(screen, cameraX, cameraY, zoomLevel)
     return gold, boatAndPirate
 
@@ -514,9 +591,9 @@ def drawMouse(screen, gridSize, cameraX, cameraY):
     rect = pygame.Rect(screenX, screenY, gridSize, gridSize)
     pygame.draw.rect(screen, (0, 0, 0), rect, width=2) 
 
-def increaseCropCount():
+def increaseCropCount(speedMultiplier):
     for group in farmGroups:
-        group.generateCrops()  # Generate crops for the group
+        group.generateCrops(speedMultiplier)  # Generate crops for the group
         group.drawCropCount(screen, font, cameraX, cameraY)  # Display crop count
 
 def groupFarms(farm, farmGroups):
@@ -574,14 +651,14 @@ def moveFarmer(placedItems, pathGrid, screen, cameraX, cameraY):
         if isinstance(item["item"], Farmer):
             farmer = item["item"]
 
-            if farmer.role == 'farm_to_cookhouse':
+            if farmer.role == 'farmToCookhouse':
                 # Determine the farmer's current state and set the target accordingly
                 if not farmer.carryingCrops:  # Move to farm first if not carrying crops
                     closestFarm = None
                     minDistance = float('inf')
-                    for farm_item in placedItems:
-                        if isinstance(farm_item["item"], Farm):
-                            farm = farm_item["item"]
+                    for farm in placedItems:
+                        if isinstance(farm["item"], Farm):
+                            farm = farm["item"]
                             distance = farmer.calculateDistance(farm)
                             if distance < minDistance and farmer.hasAPath(farm, pathGrid):
                                 closestFarm = farm
@@ -598,9 +675,9 @@ def moveFarmer(placedItems, pathGrid, screen, cameraX, cameraY):
                 else:  # If carrying crops, move to the cookhouse
                     closestCookhouse = None
                     minDistance = float('inf')
-                    for cookHouse_item in placedItems:
-                        if isinstance(cookHouse_item["item"], Cookhouse):
-                            cookhouse = cookHouse_item["item"]
+                    for cookHouse in placedItems:
+                        if isinstance(cookHouse["item"], Cookhouse):
+                            cookhouse = cookHouse["item"]
                             distance = farmer.calculateDistance(cookhouse)
                             if distance < minDistance and farmer.hasAPath(cookhouse, pathGrid):
                                 closestCookhouse = cookhouse
@@ -616,9 +693,9 @@ def moveFarmer(placedItems, pathGrid, screen, cameraX, cameraY):
                 if not farmer.carryingFood:
                     closestCookhouse = None
                     minDistance = float('inf')
-                    for cookHouse_item in placedItems:
-                        if isinstance(cookHouse_item["item"], Cookhouse):
-                            cookhouse = cookHouse_item["item"]
+                    for cookHouse in placedItems:
+                        if isinstance(cookHouse["item"], Cookhouse):
+                            cookhouse = cookHouse["item"]
                             distance = farmer.calculateDistance(cookhouse)
                             if distance < minDistance and farmer.hasAPath(cookhouse, pathGrid):
                                 closestCookhouse = cookhouse
@@ -646,6 +723,7 @@ def moveFarmer(placedItems, pathGrid, screen, cameraX, cameraY):
                         farmer.carryingFood = False
            
             farmer.draw(screen, cameraX, cameraY)
+ 
                
 run = True
 while run:
@@ -654,8 +732,6 @@ while run:
         if event.type == pygame.QUIT:
             run = False
         elif event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP):
-            #zoomLevel = handleZoom(event, zoomLevel)
-
             adjustedIslandWidth = islandWidth * zoomLevel
             adjustedIslandHeight = islandHeight * zoomLevel
 
@@ -663,6 +739,7 @@ while run:
             mouseX, mouseY = pygame.mouse.get_pos()
             adjustedMouseX, adjustedMouseY = adjustMouseCoordinates(mouseX, mouseY, cameraX, cameraY, zoomLevel)
             print("mouse",adjustedMouseX, adjustedMouseY)
+            handleSpeedButtonClick(mouseX, mouseY)
 
             gold, placedItems, selectedItem, isDock, noOfItems = handleMenuClicks(mouseX, mouseY, adjustedMouseX,
                                         adjustedMouseY, gold, noOfItems, selectedItem, menuItems, isDock, islandWidth, islandHeight, gridSize, dockBoats)
@@ -673,22 +750,22 @@ while run:
 
     screen.fill(Blue)
     drawIsland(cameraX, cameraY, dockWidth, dockHeight, White)  
-
     noOfItems, boatAndPirate, population = spawnBoat(noOfItems, boatAndPirate, population, cameraX, cameraY) #moves boat towards entrance
-
-    gold, boatAndPirate = updatePirates(boatAndPirate, placedItems, gold) #updates pirates movements and payments when interacting with palcedItems
-
     drawPlacedItems(placedItems, cameraX, cameraY, zoomLevel)
     showFloatingTexts(screen, floatingTexts, cameraX, cameraY, font)
-    increaseCropCount()
+    increaseCropCount(speedMultiplier)
     updateFoodCount()
     moveFarmer(placedItems, pathGrid, screen, cameraX, cameraY)
-    gold = generateGoldAtDock(placedItems, gold, cameraX, cameraY, floatingTexts, screen)
+    gold = generateGoldAtDock(placedItems, gold, cameraX, cameraY, floatingTexts, screen, speedMultiplier)
     boatsAtDock(dockBoats, timer)
     drawBoats(screen, cameraX, cameraY)
-    drawUpgradeBox(placedItems, cameraX, cameraY, zoomLevel) #when upgrade box is clicked shows it above item
-    #battleButton = drawBattleButton(screen)  
+    gold, boatAndPirate = updatePirates(boatAndPirate, placedItems, gold, speedMultiplier) #updates pirates movements and payments when interacting with palcedItems
+    drawUpgradeBox(placedItems, cameraX, cameraY, zoomLevel) #when upgrade box is clicked shows it above item 
     drawMenuItems(menuItems)
+    updateDate()
+    displayDate(screen, font)
+    displayTimeSpeedSettings()
+    updateSpeeds(boatAndPirate, placedItems, speedMultiplier)
     drawStats(gold, population, White)
     drawMouse(screen, gridSize, cameraX, cameraY)
     pygame.display.update()
