@@ -41,7 +41,7 @@ Brown = (139, 69, 19)
 Red = (255, 0, 0)
 
 #Game Variables
-gold = 1000
+gold = 100000
 population = 0
 noOfItems = 0
 placedItems = []
@@ -69,15 +69,15 @@ menuHeight = 100
 menuPrices = {"small": 100, "medium": 500, "large": 700, "tent": 200, "restaurant": 500, "farm": 50, 'cookhouse': 100, 'path': 10,
               "farmer": 100}
 menuItems = [
-    {"item": 'small', "rect": pygame.Rect(10, screenHeight - menuHeight + 10, 80, 80), "dock": True},
-    {"item": 'medium',"rect": pygame.Rect(100, screenHeight - menuHeight + 10, 80, 80), "dock": True},
-    {"item": 'large', "rect": pygame.Rect(190, screenHeight - menuHeight + 10, 80, 80), "dock": True},
-    {"item": 'tent',"rect": pygame.Rect(280, screenHeight - menuHeight + 10, 80, 80), "dock": False },
-    {"item": 'restaurant', "rect": pygame.Rect(370, screenHeight - menuHeight + 10, 80, 80), "dock": False },
-    {"item": 'farm', "rect": pygame.Rect(460, screenHeight - menuHeight + 10, 80, 80), "dock": False },
-    {"item": 'cookhouse', "rect": pygame.Rect(550, screenHeight - menuHeight + 10, 80, 80), "dock": False },
-    {"item": 'path', "rect": pygame.Rect(640, screenHeight - menuHeight + 10, 80, 80), "dock": False },
-    {"item": 'farmer', "rect": pygame.Rect(730, screenHeight - menuHeight + 10, 80, 80), "dock": False }    
+    {"item": 'small', "rect": pygame.Rect(10, screenHeight - menuHeight + 10, 40, 40), "dock": True},
+    {"item": 'medium',"rect": pygame.Rect(70, screenHeight - menuHeight + 10, 40, 40), "dock": True},
+    {"item": 'large', "rect": pygame.Rect(140, screenHeight - menuHeight + 10, 40, 40), "dock": True},
+    {"item": 'tent',"rect": pygame.Rect(210, screenHeight - menuHeight + 10, 40, 40), "dock": False },
+    {"item": 'restaurant', "rect": pygame.Rect(280, screenHeight - menuHeight + 10, 40, 40), "dock": False },
+    {"item": 'farm', "rect": pygame.Rect(350, screenHeight - menuHeight + 10, 40, 40), "dock": False },
+    {"item": 'cookhouse', "rect": pygame.Rect(420, screenHeight - menuHeight + 10, 40, 40), "dock": False },
+    {"item": 'path', "rect": pygame.Rect(490, screenHeight - menuHeight + 10, 40, 40), "dock": False },
+    {"item": 'farmer', "rect": pygame.Rect(560, screenHeight - menuHeight + 10, 40, 40), "dock": False }  
 ]
 
 
@@ -168,9 +168,14 @@ def handleMenuClicks(mouseX, mouseY, adjustedMouseX, adjustedMouseY, gold, noOfI
                         for i in range(SelectedItem.rect.y, SelectedItem.rect.y + 21):
                             for j in range(SelectedItem.rect.x, SelectedItem.rect.x+ 21):
                                 pathGrid[(j, i)] = True
-                        print(pathGrid)
                     if selectedItem == 'farmer':
-                        SelectedItem = Farmer([adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize])
+                        gridX = adjustedMouseX // gridSize * gridSize
+                        gridY = adjustedMouseY // gridSize * gridSize
+                        centerX = gridX + gridSize // 2
+                        centerY = gridY + gridSize // 2
+                        SelectedItem = Farmer([centerX, centerY])
+                        SelectedItem.assignFarmerRole(pathGrid, placedItems)
+                        print(SelectedItem.role)
                     placedItems.append(
                         {"item": SelectedItem, "pos": (adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize), "orientation": "normal"})
                     floatingTexts.append({"text": f"-{menuPrices[selectedItem]}$", "x": adjustedMouseX, "y": adjustedMouseY, "expiration": currentTime + 1})
@@ -349,7 +354,7 @@ def drawIsland(cameraX, cameraY, dockWidth, dockHeight, White):
 
 
 def spawnBoat(noOfItems, boatAndPirate, population, cameraX, cameraY):
-    if noOfItems > 3:
+    if noOfItems > 4:
         newBoat = Boat([800, -1100], "none")
         newPirate = Pirate([800, 20], 0)
         boatAndPirate.append((newBoat, newPirate))
@@ -379,26 +384,27 @@ def findClosestObject(placedItems, pirate):
     minDistance = 200
     object = None
     for item in placedItems:
-        if not isinstance(item["item"], Dock):
-            objectType = item["item"].label
+        if not isinstance(item["item"], Dock) and not isinstance(item["item"], Farmer) and not isinstance(item["item"], Path) and not isinstance(item["item"], Farm) and not isinstance(item["item"], Cookhouse):
             itemX, itemY = item["pos"]
             distance = ((pirate.position[0] - itemX) ** 2 + (pirate.position[1] - itemY) ** 2) ** 0.5
             # Check if the tent is within the 200-pixel range
             if distance < minDistance:
                 minDistance = distance
                 closestObjectLocation = (itemX, itemY)
-                if objectType == "Tent":
+                if item["item"].label == "Tent":
                     object = item["item"]
-                elif objectType == "Restaurant":
+                    objectType = item["item"].label
+                elif item["item"].label == "Restaurant":
                     object = item["item"]
+                    objectType = item["item"].label
     return closestObjectLocation, objectType, boatAndPirate, object
 
 def piratePayment(pirate, gold, objectType, object):
-    payment = pirate.update(objectType)
+    currentTime = time.time()
+    payment = pirate.update(objectType, object)
     if payment > 0:
         gold += payment
-        if objectType == "Tent":
-            pirate.sleep += 30
+        floatingTexts.append({"text": f"+ {payment}$", "x": object.position[0], "y": object.position[1], "expiration": currentTime + 1})
     return gold, boatAndPirate
 
 
@@ -534,6 +540,9 @@ def groupFarms(farm, farmGroups):
         newGroup = FarmGroup()
         newGroup.addFarm(farm)
         farmGroups.append(newGroup)
+     # Debug: Print coordinates of farms in groups
+    #for group in farmGroups:
+     #   print("Farm Group Coordinates:", group.getCoordinates())
 
 
 def mergeGroups(targetGroup, farmGroups):
@@ -557,73 +566,87 @@ def updateFoodCount():
     for item in placedItems:
         if isinstance(item["item"], Cookhouse):
             item["item"].drawFoodCount(screen, cameraX, cameraY)
-
-
-def farmerMoveToFarm(placedItems, pathGrid, screen, cameraX, cameraY):
-    for item in placedItems:
-        if isinstance(item["item"], Farmer):
-            farmer = item["item"]
-            for farm_item in placedItems:
-                if isinstance(farm_item["item"], Farm):
-                    farm = farm_item["item"]
-                    if not farmer.isAtFarm(farm):
-                        farmer.moveToFarm(farm, pathGrid)
-                    else:
-                        for group in farmGroups:
-                            if farm in group.farms:
-                                farmer.getCrops(group)
-                                break  # Stop searching once the matching group is found
-                    farmer.draw(screen, cameraX, cameraY)
-
-def farmerMoveToCookhouse(placedItems, pathGrid, screen, cameraX, cameraY):
-    for item in placedItems:
-        if isinstance(item["item"], Farmer):
-            farmer = item["item"]
-            for cookHouse in placedItems:
-                if isinstance(cookHouse["item"], Cookhouse):
-                    cookHouse = cookHouse["item"]
-                    if not farmer.isAtCookhouse(cookHouse):
-                        farmer.moveToFarm(cookHouse, pathGrid)
-                    else:
-                        farmer.dropOffCrops(cookHouse)
-                    farmer.draw(screen, cameraX, cameraY)
+        if isinstance(item["item"], Restaurant):
+            item["item"].drawFoodCount(screen, cameraX, cameraY)
 
 def moveFarmer(placedItems, pathGrid, screen, cameraX, cameraY):
     for item in placedItems:
         if isinstance(item["item"], Farmer):
             farmer = item["item"]
 
-            # Determine the farmer's current state and set the target accordingly
-            if not farmer.carryingCrops:  # Move to farm first if not carrying crops
-                for farm_item in placedItems:
-                    if isinstance(farm_item["item"], Farm):
-                        farm = farm_item["item"]
-                        if not farmer.isAtFarm(farm):
-                            farmer.moveTowards(farm, pathGrid)
-                            print("moving to farm")
-                        else:
-                            # Get crops from the farm group
-                            for group in farmGroups:
-                                if farm in group.farms:
-                                    farmer.getCrops(group)
-                                    break
-                        
-                        break  # Stop after targeting one farm
+            if farmer.role == 'farm_to_cookhouse':
+                # Determine the farmer's current state and set the target accordingly
+                if not farmer.carryingCrops:  # Move to farm first if not carrying crops
+                    closestFarm = None
+                    minDistance = float('inf')
+                    for farm_item in placedItems:
+                        if isinstance(farm_item["item"], Farm):
+                            farm = farm_item["item"]
+                            distance = farmer.calculateDistance(farm)
+                            if distance < minDistance and farmer.hasAPath(farm, pathGrid):
+                                closestFarm = farm
+                                minDistance = distance
 
-            else:  # If carrying crops, move to the cookhouse
-                for cookHouse_item in placedItems:
-                    if isinstance(cookHouse_item["item"], Cookhouse):
-                        cookhouse = cookHouse_item["item"]
-                        if not farmer.isAtCookhouse(cookhouse):
-                            farmer.moveTowards(cookhouse, pathGrid)
-                        else:
-                            farmer.dropCrops(cookhouse)  # Drop off crops
-                            farmer.carryingCrops = False  # Reset carrying state
-                        farmer.draw(screen, cameraX, cameraY)
-                        break  # Stop after targeting one cookhouse
+                    if closestFarm and not farmer.isAtFarm(closestFarm):
+                        farmer.moveTowards(closestFarm, pathGrid)
+                    elif closestFarm:
+                        # Get crops from the farm group
+                        for group in farmGroups:
+                            if closestFarm in group.farms:
+                                farmer.getCrops(group)
+                                break
+                else:  # If carrying crops, move to the cookhouse
+                    closestCookhouse = None
+                    minDistance = float('inf')
+                    for cookHouse_item in placedItems:
+                        if isinstance(cookHouse_item["item"], Cookhouse):
+                            cookhouse = cookHouse_item["item"]
+                            distance = farmer.calculateDistance(cookhouse)
+                            if distance < minDistance and farmer.hasAPath(cookhouse, pathGrid):
+                                closestCookhouse = cookhouse
+                                minDistance = distance
+                    if closestCookhouse and not farmer.isAtCookhouse(closestCookhouse):
+                    
+                        farmer.moveTowards(closestCookhouse, pathGrid)
+                
+                    elif closestCookhouse:
+                        farmer.dropCrops(closestCookhouse)  # Drop off crops
+                        farmer.carryingCrops = False  # Reset carrying state
+            else:
+                if not farmer.carryingFood:
+                    closestCookhouse = None
+                    minDistance = float('inf')
+                    for cookHouse_item in placedItems:
+                        if isinstance(cookHouse_item["item"], Cookhouse):
+                            cookhouse = cookHouse_item["item"]
+                            distance = farmer.calculateDistance(cookhouse)
+                            if distance < minDistance and farmer.hasAPath(cookhouse, pathGrid):
+                                closestCookhouse = cookhouse
+                                minDistance = distance
+                    if closestCookhouse and not farmer.isAtCookhouse(closestCookhouse):
+                        farmer.moveTowards(closestCookhouse, pathGrid)
+                    elif closestCookhouse:
+                        farmer.getFood(closestCookhouse)
+                        farmer.carryingFood = True
+                else:
+                    closestRestaurant = None
+                    minDistance = float('inf')
+                    for restaurant in placedItems:
+                        if isinstance(restaurant["item"], Restaurant):
+                            restaurant = restaurant["item"]
+                            distance = farmer.calculateDistance(restaurant)
+                            if distance < minDistance and farmer.hasAPath(restaurant, pathGrid):
+                                closestRestaurant = restaurant
+                                minDistance = distance
+
+                    if closestRestaurant and not farmer.isAtPlace(closestRestaurant):
+                        farmer.moveTowards(closestRestaurant, pathGrid)
+                    elif closestRestaurant:
+                        farmer.dropFood(closestRestaurant) 
+                        farmer.carryingFood = False
+           
             farmer.draw(screen, cameraX, cameraY)
-
-
+               
 run = True
 while run:
     #Handle inputs
@@ -631,7 +654,7 @@ while run:
         if event.type == pygame.QUIT:
             run = False
         elif event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP):
-            zoomLevel = handleZoom(event, zoomLevel)
+            #zoomLevel = handleZoom(event, zoomLevel)
 
             adjustedIslandWidth = islandWidth * zoomLevel
             adjustedIslandHeight = islandHeight * zoomLevel
@@ -659,14 +682,12 @@ while run:
     showFloatingTexts(screen, floatingTexts, cameraX, cameraY, font)
     increaseCropCount()
     updateFoodCount()
-    #farmerMoveToFarm(placedItems, pathGrid, screen, cameraX, cameraY)
-    #farmerMoveToCookhouse(placedItems, pathGrid, screen, cameraX, cameraY)
     moveFarmer(placedItems, pathGrid, screen, cameraX, cameraY)
     gold = generateGoldAtDock(placedItems, gold, cameraX, cameraY, floatingTexts, screen)
     boatsAtDock(dockBoats, timer)
     drawBoats(screen, cameraX, cameraY)
     drawUpgradeBox(placedItems, cameraX, cameraY, zoomLevel) #when upgrade box is clicked shows it above item
-    battleButton = drawBattleButton(screen)  
+    #battleButton = drawBattleButton(screen)  
     drawMenuItems(menuItems)
     drawStats(gold, population, White)
     drawMouse(screen, gridSize, cameraX, cameraY)
