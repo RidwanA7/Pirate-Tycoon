@@ -1,12 +1,14 @@
 import pygame
 import random
 import time
+from restuarant import Restaurant
 
 class Pirate:
     def __init__(self, position, payment):
         self.position = position
         self.active = False  # Becomes active when the boat reaches the entrance dock
         self.speed = 0.25
+        self.baseSpeed = 0.25
         self.direction = random.choice([(1, 0), (-1, 0), (0, 1), (0, -1)])
         self.inCooldown = False
         self.objectStopTime = None
@@ -39,21 +41,25 @@ class Pirate:
             self.sleep = max(0, self.sleep - 20)
             self.satisfactionTimeDecrease = time.time()
 
-    def checkCooldown(self):
+    def checkCooldown(self, speedMultiplier):
         if self.objectCooldownEnd and time.time() > self.objectCooldownEnd:
             self.inCooldown = False
 
-    def pay(self, object):
+    def pay(self, objectType, object):
         self.inCooldown = True
         self.objectCooldownEnd = time.time() + 10  # 10-second cooldown
         self.nearObject = False
         self.objectStopTime = None
-        if object == "Tent":
+        if objectType == "Tent":
             self.payment = 400
             self.sleep += 10
-        elif object == "Restaurant":
-            self.payment = 800
-            self.hunger += 10
+        elif objectType == "Restaurant":
+            if object.food >= 2:
+                self.payment = 800
+                self.hunger += 10
+                object.food -= 2
+            else:
+                self.payment = 0
         return self.payment
 
     def move(self):
@@ -68,19 +74,20 @@ class Pirate:
         self.position[0] = max(0, min(self.position[0], 800))
         self.position[1] = max(0, min(self.position[1], 600))
 
-    def update(self, object):
+    def update(self, objectType, object, speedMultiplier):
         self.payment = 0
         self.updatePirateStats()
-        self.checkCooldown()
+        self.checkCooldown(speedMultiplier)
         if self.active:
             # Check if near an object
             if self.nearObject and not self.inCooldown:
                 if self.objectStopTime is None:  # Start the 5-second wait at the object
                     self.objectStopTime = time.time()
-                elif time.time() - self.objectStopTime >= 5:
-                    self.payment = self.pay(object)
+                elif time.time() - self.objectStopTime >= 5:  # Stay at the object for 5 seconds
+                    self.payment = self.pay(objectType, object)
             self.move()
         return self.payment
+    
     def drawSatisfactionBar(self, screen, cameraX, cameraY, zoomLevel):
         
         barX = (self.position[0] * zoomLevel) + cameraX - (25 * zoomLevel)
@@ -108,7 +115,7 @@ class Pirate:
         font = pygame.font.Font(None, fontSize)
 
         # Render labels with adjusted size
-        hungerLabel = font.render("Hunger", True, (255, 255, 255))  # White text
+        hungerLabel = font.render("Food", True, (255, 255, 255))  # White text
         sleepLabel = font.render("Sleep", True, (255, 255, 255))  # White text
 
         # Adjust label positions based on zoom
