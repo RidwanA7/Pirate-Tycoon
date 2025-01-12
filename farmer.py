@@ -11,7 +11,8 @@ class Farmer(pygame.sprite.Sprite):
         self.image = pygame.image.load(r"C:\Users\Study\Pirate Tycoon\images\farmer.png")
         self.image = pygame.transform.scale(self.image, (10, 10))
         self.rect = self.image.get_rect(center=self.position)
-        self.speed = 2
+        self.speed = 1
+        self.baseSpeed = 1
         self.carryingCrops = False
         self.carryingFood = False
         self.label = "Farmer"
@@ -23,7 +24,7 @@ class Farmer(pygame.sprite.Sprite):
         queue = deque([position])
         visited = set([position])  # Initialize with starting position
         
-        def is_within_range(pos1, pos2, threshold=15):
+        def isWithinRange(pos1, pos2, threshold=15):
             dx = pos1[0] - pos2[0]
             dy = pos1[1] - pos2[1]
             return (dx**2 + dy**2)**0.5 <= threshold
@@ -33,11 +34,11 @@ class Farmer(pygame.sprite.Sprite):
             
             # Check if the current position is near a placed building
             for item in placedItems:
-                building_position = (
+                buildingPosition = (
                     item["item"].position[0] + 20 // 2,
                     item["item"].position[1] + 20 // 2
                 )
-                if is_within_range(current, building_position):
+                if isWithinRange(current, buildingPosition):
                     if isinstance(item["item"], Farm):
                         return "farm"
                     elif isinstance(item["item"], Restaurant):
@@ -70,9 +71,9 @@ class Farmer(pygame.sprite.Sprite):
     def assignFarmerRole(self, pathGrid, placedItems):
         buildingType = self.checkBuildingAtEnd(pathGrid, placedItems)
         if buildingType == "farm":
-            self.role = "farm_to_cookhouse"
+            self.role = "farmToCookhouse"
         elif buildingType == "restaurant":
-            self.role = "cookhouse_to_restaurant"
+            self.role = "cookhouseToRestaurant"
         else:
             self.role = None  # No valid role found; farmer won't move
             
@@ -80,8 +81,6 @@ class Farmer(pygame.sprite.Sprite):
     def moveTowards(self, item, pathGrid):
         currentPos = tuple(self.position)
         targetPos = (item.position[0] + 20 // 2, item.position[1] + 20 // 2)
-        x_diff = targetPos[0] - currentPos[0]
-        y_diff = targetPos[1] - currentPos[1]
         
         # If we're already close enough, don't move
         if ((currentPos[0] - targetPos[0]) ** 2 + (currentPos[1] - targetPos[1]) ** 2) ** 0.5 <= 2:
@@ -95,6 +94,9 @@ class Farmer(pygame.sprite.Sprite):
         targetFound = False
         finalPos = None
 
+        # Define the base step size for the grid
+        GRID_STEP = self.speed  # Use smallest possible step for pathfinding
+
         while queue and not targetFound:
             current = queue.popleft()
             
@@ -104,15 +106,16 @@ class Farmer(pygame.sprite.Sprite):
                 finalPos = current
                 break
 
-           # Fixed order of neighbors for consistent path finding
+            # Use single-unit steps for pathfinding
             neighbors = [
-                (current[0], current[1] - 1),  # up
-                (current[0] + 1, current[1]),  # right
-                (current[0], current[1] + 1),  # down
-                (current[0] - 1, current[1])   # left
+                (current[0], current[1] - GRID_STEP),  # up
+                (current[0] + GRID_STEP, current[1]),  # right
+                (current[0], current[1] + GRID_STEP),  # down
+                (current[0] - GRID_STEP, current[1])   # left
             ]
 
             for neighbor in neighbors:
+                neighbor = tuple(map(int, neighbor))
                 if (neighbor in pathGrid and pathGrid[neighbor] and neighbor not in visited):
                     queue.append(neighbor)
                     visited.add(neighbor)
@@ -127,13 +130,36 @@ class Farmer(pygame.sprite.Sprite):
                 current = parent[current]
             path.reverse()
 
-        
-            # Move to next position if path exists
+            # Move towards next position using speed
             if len(path) > 1:
                 nextPos = path[1]
-                self.position = list(nextPos)
-                self.rect.center = self.position
-            
+                # Scale movement by the farmer's speed and multiplier
+                moveDistance = self.speed  
+                # Calculate direction and normalize movement to the next position
+                directionX = nextPos[0] - currentPos[0]
+                directionY = nextPos[1] - currentPos[1]
+                distance = (directionX**2 + directionY**2) ** 0.5
+                
+                if distance > 0:
+                    # Normalize the direction and multiply by speed and multiplier
+                    normalizedX = directionX / distance * moveDistance
+                    normalizedY = directionY / distance * moveDistance
+                    
+                    # Update position
+                    self.position[0] += normalizedX
+                    self.position[1] += normalizedY
+                    self.rect.center = self.position
+        else:
+            print(f"No path found from {currentPos} to {targetPos}")
+            # Optional: print some debug info about the pathGrid around current position
+            print("Neighbors available:")
+            for dx in [-GRID_STEP, 0, GRID_STEP]:
+                for dy in [-GRID_STEP, 0, GRID_STEP]:
+                    check_pos = (currentPos[0] + dx, currentPos[1] + dy)
+                    if check_pos in pathGrid:
+                        print(f"Position {check_pos}: {pathGrid[check_pos]}")
+
+        
 
     def calculateDistance(self, target):
         return ((self.position[0] - target.position[0]) ** 2 + (self.position[1] - target.position[1]) ** 2) ** 0.5
@@ -172,20 +198,20 @@ class Farmer(pygame.sprite.Sprite):
         return False
 
     def isAtFarm(self, farm):
-        farm_center_x = farm.position[0] + 20 // 2
-        farm_center_y = farm.position[1] + 20 // 2
-        x_diff = abs(self.position[0] - farm_center_x)
-        y_diff = abs(self.position[1] - farm_center_y)
+        farmX = farm.position[0] + 20 // 2
+        farmY = farm.position[1] + 20 // 2
+        xDiff = abs(self.position[0] - farmX)
+        yDiff = abs(self.position[1] - farmY)
         
         # Check if the farmer is within 20 pixels of the farm
-        return x_diff <= 15 and y_diff <= 15
+        return xDiff <= 15 and yDiff <= 15
 
     def draw(self, screen, cameraX, cameraY):
         screen.blit(self.image, (self.rect.x + cameraX, self.rect.y + cameraY))
         font = pygame.font.SysFont("arial", 14)
-        crop_text = font.render(f"Crops ({self.crops})", True, (255, 255, 255))  # White text
-        text_pos = (self.rect.x + cameraX, self.rect.y + cameraY - 15)
-        screen.blit(crop_text, text_pos)
+        cropText = font.render(f"Crops ({self.crops})", True, (255, 255, 255))  # White text
+        textPos = (self.rect.x + cameraX, self.rect.y + cameraY - 15)
+        screen.blit(cropText, textPos)
 
 
     def getCrops(self, farmGroup):
@@ -198,22 +224,22 @@ class Farmer(pygame.sprite.Sprite):
 
     def isAtCookhouse(self, cookhouse):
         # Calculate the distance between the farmer and the cookhouse
-        cookhouse_center_x = cookhouse.position[0] + 20 // 2
-        cookhouse_center_y = cookhouse.position[1] + 20 // 2
-        x_diff = abs(self.position[0] - cookhouse_center_x)
-        y_diff = abs(self.position[1] - cookhouse_center_y)
+        cookhouseX = cookhouse.position[0] + 20 // 2
+        cookhouseY = cookhouse.position[1] + 20 // 2
+        xDiff = abs(self.position[0] - cookhouseX)
+        yDiff = abs(self.position[1] - cookhouseY)
 
         # Check if the farmer is within 20 pixels of the cookhouse
-        return x_diff <= 15 and y_diff <= 15
+        return xDiff <= 15 and yDiff <= 15
     
     def isAtPlace(self, item):
-        item_center_x = item.position[0] + 20 // 2
-        item_center_y = item.position[1] + 20 // 2
-        x_diff = abs(self.position[0] - item_center_x)
-        y_diff = abs(self.position[1] - item_center_y)
+        itemX = item.position[0] + 20 // 2
+        itemY = item.position[1] + 20 // 2
+        xDiff = abs(self.position[0] - itemX)
+        yDiff = abs(self.position[1] - itemY)
         
         # Check if the farmer is within 20 pixels of the item
-        return x_diff <= 15 and y_diff <= 15
+        return xDiff <= 15 and yDiff <= 15
     
     def dropCrops(self, cookhouse):
         if self.carryingCrops and isinstance(cookhouse, Cookhouse):
