@@ -36,6 +36,10 @@ slow = 5
 medium = 3
 fast = 1
 
+#stats button
+buttonRect = pygame.Rect(200, 10, 60, 40)  # Button position and size (x, y, width, height)
+showStatsMenu = False  # Track if the stats menu should be displayed
+
 dayLength = slow
 speedMultipliers = { slow: 1.0, medium: 2.0, fast: 4.0 } 
 speedMultiplier = speedMultipliers[dayLength]
@@ -47,8 +51,14 @@ speedButtons = {
     "Fast": pygame.Rect(700, 90, 80, 30),
 }
 
+#monthly stats
+profitLog = {}
+currentMonthIncome = 0
+currentMonthExpenses = 0
+currentMonthProfit = 0
+
 #date/time
-currentDate = datetime(1500, 1, 1)
+currentDate = datetime(1500, 1, 2)
 dayStartTime = time.time()
 
 screen = pygame.display.set_mode((screenWidth, screenHeight))
@@ -101,6 +111,74 @@ menuItems = [
     {"item": 'farmer', "rect": pygame.Rect(560, screenHeight - menuHeight + 10, 40, 40), "dock": False }  
 ]
 
+def updateExpenses(amount):
+    global currentMonthExpenses
+    currentMonthExpenses += amount
+
+def updateIncome(amount):
+    global currentMonthIncome
+    currentMonthIncome += amount
+
+def updateDateAndProfit():
+    global currentDate, currentMonthIncome, currentMonthExpenses, currentMonthProfit, profitLog
+    currentMonthProfit = currentMonthIncome - currentMonthExpenses
+
+    # Create the key for the current month
+    currentMonthKey = f"{currentDate.year}-{currentDate.month:02d}"
+
+    # Initialize the month's profit list if not already present
+    if currentMonthKey not in profitLog:
+        profitLog[currentMonthKey] = {
+            "income": 0,  # Start with 0 income for the current month
+            "expenses": 0,  # Start with 0 expenses for the current month
+            "profit": [],
+        }
+
+    # Add today's profit to the daily profit list
+    if currentDate.day - 1 < len(profitLog[currentMonthKey]["profit"]):
+        # If the day already exists in the list, update it
+        profitLog[currentMonthKey]["profit"][currentDate.day - 1] = currentMonthProfit
+    else:
+        # Append today's profit if it's a new entry
+        profitLog[currentMonthKey]["profit"].append(currentMonthProfit)
+
+    # Update income and expenses for the current day
+    profitLog[currentMonthKey]["income"] = currentMonthIncome
+    profitLog[currentMonthKey]["expenses"] = currentMonthExpenses
+
+    # Check if it's the start of a new month
+    if currentDate.day == 1:  # Assuming the start of a new month
+        # Determine the previous month and year
+        previousMonth = currentDate.month - 1
+        year = currentDate.year
+        if previousMonth == 0:  # If current month is January, go to December of the previous year
+            previousMonth = 12
+            year -= 1
+
+        # Generate the key for the previous month
+        previousMonthKey = f"{year}-{previousMonth:02d}"
+
+        print(f"Previous month key: {previousMonthKey}")
+        print("income", currentMonthIncome)
+        # Ensure previous month data exists
+        if previousMonthKey not in profitLog:
+            profit = currentMonthIncome - currentMonthExpenses
+            profitLog[previousMonthKey] = {
+                "income": currentMonthIncome,
+                "expenses": currentMonthExpenses,
+                "profit": profit,  # Default to 30 days of zero profit
+            }
+        
+        # Store the previous month's data (income, expenses, profit) before resetting
+        #profitLog[previousMonthKey]["income"] = currentMonthIncome
+        #profitLog[previousMonthKey]["expenses"] = currentMonthExpenses
+
+        # Reset monthly income, expenses, and profit for the new month
+        currentMonthProfit = 0
+        currentMonthIncome = 0
+        currentMonthExpenses = 0
+
+
 
 
 def handleMenuClicks(mouseX, mouseY, adjustedMouseX, adjustedMouseY, gold, noOfItems, selectedItem, menuItems, isDock, islandWidth, islandHeight, gridSize, dockBoats):
@@ -147,6 +225,7 @@ def handleMenuClicks(mouseX, mouseY, adjustedMouseX, adjustedMouseY, gold, noOfI
                         {"item": dock, "pos": (adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize), "orientation": "left"})
                     floatingTexts.append({"text": f"-{menuPrices[selectedItem]}$", "x": adjustedMouseX, "y": adjustedMouseY, "expiration": currentTime + 1})
                     gold -= menuPrices[selectedItem]
+                    updateExpenses(menuPrices[selectedItem])
                     
                 elif islandWidth - (20) < adjustedMouseX < islandWidth and 0 < adjustedMouseY < islandHeight:
                     dock = Dock(selectedItem, [adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize], "right")
@@ -156,6 +235,7 @@ def handleMenuClicks(mouseX, mouseY, adjustedMouseX, adjustedMouseY, gold, noOfI
                          "orientation": "right"})
                     floatingTexts.append({"text": f"-{menuPrices[selectedItem]}$", "x": adjustedMouseX, "y": adjustedMouseY, "expiration": currentTime + 1})
                     gold -= menuPrices[selectedItem]
+                    updateExpenses(menuPrices[selectedItem])
                     
                 elif 0 < adjustedMouseY < 20 and 0 <= adjustedMouseX <= islandWidth:
                     dock = Dock(selectedItem, [adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize], "top")
@@ -165,6 +245,7 @@ def handleMenuClicks(mouseX, mouseY, adjustedMouseX, adjustedMouseY, gold, noOfI
                          "orientation": "top"})
                     floatingTexts.append({"text": f"-{menuPrices[selectedItem]}$", "x": adjustedMouseX, "y": adjustedMouseY, "expiration": currentTime + 1})
                     gold -= menuPrices[selectedItem]
+                    updateExpenses(menuPrices[selectedItem])
                     
                 elif islandHeight - 20 < adjustedMouseY < islandHeight and 100 < mouseX < islandWidth - 100:
                     dock = Dock(selectedItem, [adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize], "bottom")
@@ -172,10 +253,12 @@ def handleMenuClicks(mouseX, mouseY, adjustedMouseX, adjustedMouseY, gold, noOfI
                     placedItems.append({"item": dock, "pos": (adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize), "orientation": "bottom"})
                     floatingTexts.append({"text": f"-{menuPrices[selectedItem]}$", "x": adjustedMouseX, "y": adjustedMouseY, "expiration": currentTime + 1})
                     gold -= menuPrices[selectedItem]
+                    updateExpenses(menuPrices[selectedItem])
                     
             else:
                 if 0 <= adjustedMouseX <= islandWidth and 0 <= adjustedMouseY <= islandHeight:
                     gold -= menuPrices[selectedItem]
+                    updateExpenses(menuPrices[selectedItem])
                     if selectedItem == 'tent':
                         SelectedItem = Tent([adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize])
                     if selectedItem == 'restaurant':
@@ -206,6 +289,101 @@ def handleMenuClicks(mouseX, mouseY, adjustedMouseX, adjustedMouseY, gold, noOfI
                     floatingTexts.append({"text": f"-{menuPrices[selectedItem]}$", "x": adjustedMouseX, "y": adjustedMouseY, "expiration": currentTime + 1})
                     
     return gold, placedItems, selectedItem, isDock, noOfItems
+
+def drawStatsButton():
+    # Draw the button
+    pygame.draw.rect(screen, (200, 0, 0), buttonRect)  # Red button
+    font = pygame.font.Font(None, 24)
+    button_text = font.render("Stats", True, (255, 255, 255))
+    screen.blit(button_text, (buttonRect.x + 10, buttonRect.y + 10))
+
+def ToggleStatsDisplay(mouseX, mouseY, showStatsMenu):
+    if buttonRect.collidepoint(mouseX, mouseY):
+            showStatsMenu = not showStatsMenu  # Toggle the stats menu
+    print(showStatsMenu)
+    return showStatsMenu
+
+def drawStatsDisplay(showStatsMenu, profitLog, currentMonthIncome, currentMonthExpenses, currentMonthProfit, currentDate):
+    if showStatsMenu:
+        statsMenuRect = pygame.Rect(100, 50, 600, 400)
+        pygame.draw.rect(screen, (0, 0, 0), statsMenuRect)  # Black box
+        pygame.draw.rect(screen, (255, 255, 255), statsMenuRect, 2)  # White border
+
+        # Fonts and colors
+        font = pygame.font.Font(None, 36)
+        white = (255, 255, 255)
+        gray = (200, 200, 200)
+        green = (0, 255, 0)
+
+        # Calculate the previous month and year
+        previousMonth = currentDate.month - 1
+        year = currentDate.year
+        if previousMonth == 0:  # If the current month is January
+            previousMonth = 12
+            year -= 1
+
+        # Previous month stats
+        monthKey = f"{year}-{previousMonth:02d}"
+        previousStats = profitLog.get(monthKey, {"income": 0, "expenses": 0, "profit": [0] * 30})
+        prevIncome = previousStats.get("income", 0)
+        prevExpenses = previousStats.get("expenses", 0)
+        previousProfitHistory = previousStats.get("profit", [0] * 30)
+
+        # Current month stats
+        currentMonthKey = f"{currentDate.year}-{currentDate.month:02d}"
+        currentStats = profitLog.get(currentMonthKey, {"profit": [0] * 30})
+        currentProfitHistory = currentStats.get("profit", [0] * 30)
+
+        # Display headers
+        headerText = font.render("Monthly Stats", True, white)
+        screen.blit(headerText, (statsMenuRect.x + 200, statsMenuRect.y + 10))
+
+        # Left side: Previous month
+        prevHeaderText = font.render("Previous Month", True, white)
+        screen.blit(prevHeaderText, (statsMenuRect.x + 50, statsMenuRect.y + 50))
+        prevIncomeText = font.render(f"Income: {prevIncome}", True, white)
+        screen.blit(prevIncomeText, (statsMenuRect.x + 50, statsMenuRect.y + 100))
+        prevExpensesText = font.render(f"Expenses: {prevExpenses}", True, white)
+        screen.blit(prevExpensesText, (statsMenuRect.x + 50, statsMenuRect.y + 150))
+        prevProfitText = font.render(f"Profit: {sum(previousProfitHistory)}", True, white)
+        screen.blit(prevProfitText, (statsMenuRect.x + 50, statsMenuRect.y + 200))
+
+        # Right side: Current month
+        currHeaderText = font.render("Current Month", True, white)
+        screen.blit(currHeaderText, (statsMenuRect.x + 350, statsMenuRect.y + 50))
+        currIncomeText = font.render(f"Income: {currentMonthIncome}", True, white)
+        screen.blit(currIncomeText, (statsMenuRect.x + 350, statsMenuRect.y + 100))
+        currExpensesText = font.render(f"Expenses: {currentMonthExpenses}", True, white)
+        screen.blit(currExpensesText, (statsMenuRect.x + 350, statsMenuRect.y + 150))
+        currProfitText = font.render(f"Profit: {currentMonthProfit}", True, white)
+        screen.blit(currProfitText, (statsMenuRect.x + 350, statsMenuRect.y + 200))
+
+        # Draw graphs
+        graphWidth = 250
+        graphHeight = 150
+        graphX = statsMenuRect.x + 50
+        graphY = statsMenuRect.y + 250
+
+        def drawGraph(profitHistory, x, y, width, height, label):
+            pygame.draw.rect(screen, gray, (x, y, width, height), 2)  # Graph border
+            if len(profitHistory) > 1:
+                maxProfit = max(max(profitHistory), 1)  # Avoid division by zero
+                minProfit = min(min(profitHistory), 0)
+                profitRange = maxProfit - minProfit or 1
+                points = []
+                for i, profit in enumerate(profitHistory):
+                    px = x + int(i / (len(profitHistory) - 1) * (width - 10)) + 5
+                    py = y + height - int((profit - minProfit) / profitRange * (height - 10)) - 5
+                    points.append((px, py))
+                pygame.draw.lines(screen, green, False, points, 2)
+
+            labelText = font.render(label, True, white)
+            screen.blit(labelText, (x + 10, y - 30))
+
+        drawGraph(previousProfitHistory, graphX, graphY, graphWidth, graphHeight, "Prev Month Profit")
+        drawGraph(currentProfitHistory, graphX + 300, graphY, graphWidth, graphHeight, "Curr Month Profit")
+
+
 
 def displayTimeSpeedSettings():
     for label, rect in speedButtons.items():
@@ -329,6 +507,7 @@ def generateGoldAtDock(placedItems, gold, cameraX, cameraY, floatingTexts, scree
         if dock:
             if dock.isTimeForReturn(speedMultiplier):
                 gold += dock.goldRate
+                updateIncome(dock.goldRate)
                 dockX, dockY = item["pos"]
                 floatingTexts.append({
                     "text": f"+{dock.goldRate}$",
@@ -481,6 +660,7 @@ def piratePayment(pirate, gold, objectType, object, speedMultiplier):
     payment = pirate.update(objectType, object, speedMultiplier)
     if payment > 0:
         gold += payment
+        updateIncome(payment)
         floatingTexts.append({"text": f"+ {payment}$", "x": object.position[0], "y": object.position[1], "expiration": currentTime + 1})
     return gold, boatAndPirate
 
@@ -740,7 +920,7 @@ while run:
             adjustedMouseX, adjustedMouseY = adjustMouseCoordinates(mouseX, mouseY, cameraX, cameraY, zoomLevel)
             print("mouse",adjustedMouseX, adjustedMouseY)
             handleSpeedButtonClick(mouseX, mouseY)
-
+            showStatsMenu = ToggleStatsDisplay(mouseX, mouseY, showStatsMenu)
             gold, placedItems, selectedItem, isDock, noOfItems = handleMenuClicks(mouseX, mouseY, adjustedMouseX,
                                         adjustedMouseY, gold, noOfItems, selectedItem, menuItems, isDock, islandWidth, islandHeight, gridSize, dockBoats)
 
@@ -766,7 +946,11 @@ while run:
     displayDate(screen, font)
     displayTimeSpeedSettings()
     updateSpeeds(boatAndPirate, placedItems, speedMultiplier)
+    updateDateAndProfit()
     drawStats(gold, population, White)
+    drawStatsButton()
+    print("profit", profitLog)
+    drawStatsDisplay(showStatsMenu, profitLog, currentMonthIncome, currentMonthExpenses, currentMonthProfit, currentDate)
     drawMouse(screen, gridSize, cameraX, cameraY)
     pygame.display.update()
     timer.tick(fps)
