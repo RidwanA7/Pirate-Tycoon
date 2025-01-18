@@ -72,7 +72,7 @@ Brown = (139, 69, 19)
 Red = (255, 0, 0)
 
 #Game Variables
-gold = 100000
+gold = 1000
 population = 0
 noOfItems = 0
 placedItems = []
@@ -158,27 +158,25 @@ def updateDateAndProfit():
         # Generate the key for the previous month
         previousMonthKey = f"{year}-{previousMonth:02d}"
 
-        print(f"Previous month key: {previousMonthKey}")
-        print("income", currentMonthIncome)
-        # Ensure previous month data exists
-        if previousMonthKey not in profitLog:
-            profit = currentMonthIncome - currentMonthExpenses
-            profitLog[previousMonthKey] = {
-                "income": currentMonthIncome,
-                "expenses": currentMonthExpenses,
-                "profit": profit,  # Default to 30 days of zero profit
-            }
-        
-        # Store the previous month's data (income, expenses, profit) before resetting
-        #profitLog[previousMonthKey]["income"] = currentMonthIncome
-        #profitLog[previousMonthKey]["expenses"] = currentMonthExpenses
+        # Ensure data exists for the previous month in the log
+        if previousMonthKey in profitLog:
+            # Calculate total profit for the previous month
+            profitLog[previousMonthKey]["income"] = profitLog[previousMonthKey]["income"]
+            profitLog[previousMonthKey]["expenses"] = profitLog[previousMonthKey]["expenses"]
+            profitLog[previousMonthKey]["profit"] = profitLog[previousMonthKey]["profit"]
 
-        # Reset monthly income, expenses, and profit for the new month
-        currentMonthProfit = 0
+        else:
+            # Handle case where previous month's data is missing
+            profitLog[previousMonthKey] = {
+                "income": 0,
+                "expenses": 0,
+                "profit": []
+            }
+
+        # Reset data for the new month
         currentMonthIncome = 0
         currentMonthExpenses = 0
-
-
+        currentMonthProfit = 0
 
 
 def handleMenuClicks(mouseX, mouseY, adjustedMouseX, adjustedMouseY, gold, noOfItems, selectedItem, menuItems, isDock, islandWidth, islandHeight, gridSize, dockBoats):
@@ -283,7 +281,7 @@ def handleMenuClicks(mouseX, mouseY, adjustedMouseX, adjustedMouseY, gold, noOfI
                         centerY = gridY + gridSize // 2
                         SelectedItem = Farmer([centerX, centerY])
                         SelectedItem.assignFarmerRole(pathGrid, placedItems)
-                        print(SelectedItem.role)
+
                     placedItems.append(
                         {"item": SelectedItem, "pos": (adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize), "orientation": "normal"})
                     floatingTexts.append({"text": f"-{menuPrices[selectedItem]}$", "x": adjustedMouseX, "y": adjustedMouseY, "expiration": currentTime + 1})
@@ -328,6 +326,7 @@ def drawStatsDisplay(showStatsMenu, profitLog, currentMonthIncome, currentMonthE
         prevIncome = previousStats.get("income", 0)
         prevExpenses = previousStats.get("expenses", 0)
         previousProfitHistory = previousStats.get("profit", [0] * 30)
+        previousProfit = previousProfitHistory[-1] if previousProfitHistory else 0
 
         # Current month stats
         currentMonthKey = f"{currentDate.year}-{currentDate.month:02d}"
@@ -345,7 +344,7 @@ def drawStatsDisplay(showStatsMenu, profitLog, currentMonthIncome, currentMonthE
         screen.blit(prevIncomeText, (statsMenuRect.x + 50, statsMenuRect.y + 100))
         prevExpensesText = font.render(f"Expenses: {prevExpenses}", True, white)
         screen.blit(prevExpensesText, (statsMenuRect.x + 50, statsMenuRect.y + 150))
-        prevProfitText = font.render(f"Profit: {sum(previousProfitHistory)}", True, white)
+        prevProfitText = font.render(f"Profit: {previousProfit}", True, white)
         screen.blit(prevProfitText, (statsMenuRect.x + 50, statsMenuRect.y + 200))
 
         # Right side: Current month
@@ -664,9 +663,20 @@ def piratePayment(pirate, gold, objectType, object, speedMultiplier):
         floatingTexts.append({"text": f"+ {payment}$", "x": object.position[0], "y": object.position[1], "expiration": currentTime + 1})
     return gold, boatAndPirate
 
-
-def updatePirates(boatAndPirate, placedItems, gold, speedMutiplier):
+def checkSatisfaction(boatAndPirate, population, gold, floatingTexts):
     for boat, pirate in boatAndPirate:
+        if pirate.hunger <= 0 or pirate.sleep <= 0:
+            boatAndPirate.remove((boat, pirate))
+            population -= 1
+            gold -= 100
+            floatingTexts.append({"text": "-100$", "x": pirate.position[0], "y": pirate.position[1], "expiration": time.time() + 1})
+            updateExpenses(100)
+    return population, gold, boatAndPirate, floatingTexts
+
+def updatePirates(boatAndPirate, placedItems, gold, speedMutiplier, population, floatingTexts):
+    for boat, pirate in boatAndPirate:
+        population, gold, boatAndPirate, floatingTexts = checkSatisfaction(boatAndPirate, population, gold, floatingTexts)
+
         closestObjectLocation, objectType, boatAndPirate, object = findClosestObject(placedItems, pirate)
 
         if closestObjectLocation and not pirate.inCooldown:
@@ -676,7 +686,7 @@ def updatePirates(boatAndPirate, placedItems, gold, speedMutiplier):
             pirate.nearObject = False
         gold, boatAndPirate = piratePayment(pirate, gold, objectType, object, speedMultiplier)
         pirate.draw(screen, cameraX, cameraY, zoomLevel)
-    return gold, boatAndPirate
+    return gold, boatAndPirate, population, floatingTexts
 
 def toggleUpgradeBox(placedItems, adjustedMouseX, adjustedMouseY, gold, zoomLevel, cameraX, cameraY):
     for items in placedItems:
@@ -903,8 +913,10 @@ def moveFarmer(placedItems, pathGrid, screen, cameraX, cameraY):
                         farmer.carryingFood = False
            
             farmer.draw(screen, cameraX, cameraY)
- 
-               
+
+
+
+
 run = True
 while run:
     #Handle inputs
@@ -939,7 +951,7 @@ while run:
     gold = generateGoldAtDock(placedItems, gold, cameraX, cameraY, floatingTexts, screen, speedMultiplier)
     boatsAtDock(dockBoats, timer)
     drawBoats(screen, cameraX, cameraY)
-    gold, boatAndPirate = updatePirates(boatAndPirate, placedItems, gold, speedMultiplier) #updates pirates movements and payments when interacting with palcedItems
+    gold, boatAndPirate, population, floatingTexts = updatePirates(boatAndPirate, placedItems, gold, speedMultiplier, population, floatingTexts) #updates pirates movements and payments when interacting with palcedItems
     drawUpgradeBox(placedItems, cameraX, cameraY, zoomLevel) #when upgrade box is clicked shows it above item 
     drawMenuItems(menuItems)
     updateDate()
@@ -949,11 +961,10 @@ while run:
     updateDateAndProfit()
     drawStats(gold, population, White)
     drawStatsButton()
-    print("profit", profitLog)
     drawStatsDisplay(showStatsMenu, profitLog, currentMonthIncome, currentMonthExpenses, currentMonthProfit, currentDate)
     drawMouse(screen, gridSize, cameraX, cameraY)
+
     pygame.display.update()
     timer.tick(fps)
     
-
 pygame.quit()
