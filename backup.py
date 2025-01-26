@@ -8,10 +8,11 @@ from farm import Farm, FarmGroup
 from cookhouse import Cookhouse
 from map import TileKind, Map
 from farmer import Farmer
-from pygameFunctions import setAutoUpdate, updateDisplay
 import time
 from path import Path
 from datetime import datetime, timedelta
+import math
+from enemy import Enemy
 
 #Game Settings
 pygame.init()
@@ -30,18 +31,22 @@ island = pygame.Surface((islandWidth, islandHeight))
 island.fill((0, 100, 0))
 cameraX, cameraY = 0, 0
 speed = 5
+battleMode = False
+bullets_group = pygame.sprite.Group()  # Group to manage bullets
+playerBullets = pygame.sprite.Group()
+enemyBullets = pygame.sprite.Group()
 
 #speed settings
-slow = 5
-medium = 3
-fast = 1
+slow = 60
+medium = 45
+fast = 30
 
 #stats button
 buttonRect = pygame.Rect(200, 10, 60, 40)  # Button position and size (x, y, width, height)
 showStatsMenu = False  # Track if the stats menu should be displayed
 
 dayLength = slow
-speedMultipliers = { slow: 1.0, medium: 2.0, fast: 4.0 } 
+speedMultipliers = { slow: 1.0, medium: 1.5, fast: 2.0} 
 speedMultiplier = speedMultipliers[dayLength]
 speedLabels = { slow: "Slow", medium: "Medium", fast: "Fast" }
 # Speed settings positions
@@ -70,6 +75,9 @@ Green = (34, 139, 34)
 White = (255, 255, 255)
 Brown = (139, 69, 19)
 Red = (255, 0, 0)
+black = (0, 0, 0)
+white = (255, 255, 255)
+grey = (128, 128, 128)
 
 #Game Variables
 gold = 1000
@@ -89,6 +97,12 @@ entranceDock = (islandWidth // 2 - dockWidth // 2, 0)
 boat = Boat([800, -1100], "none")  # Create a boat starting from the ocean
 pirate = Pirate([800,20], 0) # Create a pirate at entrance
 boatAndPirate = [(boat, pirate)]
+
+#enemies and enemy ships
+enemyShips = pygame.sprite.Group()
+enemyPirates = pygame.sprite.Group()
+enemyAttack = False
+enemiesArriving = True
 
 #fonts
 font = pygame.font.SysFont(None, 36)
@@ -382,8 +396,6 @@ def drawStatsDisplay(showStatsMenu, profitLog, currentMonthIncome, currentMonthE
         drawGraph(previousProfitHistory, graphX, graphY, graphWidth, graphHeight, "Prev Month Profit")
         drawGraph(currentProfitHistory, graphX + 300, graphY, graphWidth, graphHeight, "Curr Month Profit")
 
-
-
 def displayTimeSpeedSettings():
     for label, rect in speedButtons.items():
         # Draw button background
@@ -410,7 +422,6 @@ def handleSpeedButtonClick(mouseX, mouseY):
                 dayLength = fast
                 speedMultiplier = speedMultipliers[dayLength]
             break
-
 
 def updateDate():
     global currentDate, dayStartTime
@@ -469,16 +480,20 @@ def drawPlacedItems(placedItems, cameraX, cameraY, zoomLevel):
             drawDock(cameraX, cameraY, dock, orientation, scaledX, scaledY, zoomLevel, item)
         else:
             if isinstance(item["item"], Farmer):
-                pass
-            else:
-                object = item["item"]
-
                 scaledObject = pygame.transform.scale(object.image,
                                                     (int(object.image.get_width() * zoomLevel),
                                                     int(object.image.get_height() * zoomLevel)))
 
                 objectRect = scaledObject.get_rect(topleft=(scaledX + cameraX, scaledY + cameraY))
                 screen.blit(scaledObject, objectRect)
+            else:
+                object = item["item"]
+                if isinstance(object, Path):
+                    pass
+                else:
+                    if object.health <= 0:
+                        placedItems.remove(item)
+                object.draw(screen, cameraX, cameraY)       
 
 def drawDock(cameraX, cameraY, dock, orientation, scaledX, scaledY, zoomLevel, item):
     object = item["item"]
@@ -525,6 +540,9 @@ def generateGoldAtDock(placedItems, gold, cameraX, cameraY, floatingTexts, scree
 
 def drawBoats(screen, cameraX, cameraY):
     for boat, dock in dockBoats:
+        boat.draw(screen, cameraX, cameraY)
+    
+    for boat in enemyShips:
         boat.draw(screen, cameraX, cameraY)
 
 def boatsAtDock(dockBoats, clock):
@@ -608,15 +626,15 @@ def drawIsland(cameraX, cameraY, dockWidth, dockHeight, White):
     screen.blit(entranceLabel, labelRect)
 
 
-def spawnBoat(noOfItems, boatAndPirate, population, cameraX, cameraY):
+def spawnBoat(noOfItems, boatAndPirate, population, cameraX, cameraY, enemiesArriving, enemyAttack):
     if noOfItems > 4:
         newBoat = Boat([800, -1100], "none")
         newPirate = Pirate([800, 20], 0)
         boatAndPirate.append((newBoat, newPirate))
         noOfItems = 0
-
     # Move the boat towards the entrance dock
     for boat, pirate in boatAndPirate:
+        boat.updateSpeed(speedMultiplier)
         boat.moveTowards((800, 20))
         if boat.active:
             boat.draw(screen, cameraX, cameraY)
@@ -626,12 +644,26 @@ def spawnBoat(noOfItems, boatAndPirate, population, cameraX, cameraY):
             pirate.active = True
             pirate.position = list(boat.position)
             population += 1
+            pirate.hunger = 100
+            pirate.sleep = 100
 
         if boat.active:
             boatRect = (boat.position[0] + cameraX, boat.position[1] + cameraY, 30, 10)
             pygame.draw.rect(screen, Red, boatRect)
+    
+    for boat in enemyShips:
+        boat.updateSpeed(speedMultiplier)
+        boat.moveTowards((20, 20))
+        if boat.active:
+            boat.draw(screen, cameraX, cameraY)
+            boatRect = (boat.position[0] + cameraX, boat.position[1] + cameraY, 30, 10)
+            pygame.draw.rect(screen, Red, boatRect)
+        else:
+            enemyShips.remove(boat)
+            enemyAttack = True
 
-    return noOfItems, boatAndPirate, population
+
+    return noOfItems, boatAndPirate, population, enemiesArriving, enemyAttack
 
 def findClosestObject(placedItems, pirate):
     closestObjectLocation = None
@@ -654,13 +686,16 @@ def findClosestObject(placedItems, pirate):
                     objectType = item["item"].label
     return closestObjectLocation, objectType, boatAndPirate, object
 
-def piratePayment(pirate, gold, objectType, object, speedMultiplier):
+def findNearestItem():
+    pass
+
+def piratePayment(pirate, gold,speedMultiplier):
     currentTime = time.time()
-    payment = pirate.update(objectType, object, speedMultiplier)
+    payment = pirate.update(speedMultiplier, placedItems)
     if payment > 0:
         gold += payment
         updateIncome(payment)
-        floatingTexts.append({"text": f"+ {payment}$", "x": object.position[0], "y": object.position[1], "expiration": currentTime + 1})
+        floatingTexts.append({"text": f"+ {payment}$", "x": pirate.position[0], "y": pirate.position[1], "expiration": currentTime + 1})
     return gold, boatAndPirate
 
 def checkSatisfaction(boatAndPirate, population, gold, floatingTexts):
@@ -676,16 +711,20 @@ def checkSatisfaction(boatAndPirate, population, gold, floatingTexts):
 def updatePirates(boatAndPirate, placedItems, gold, speedMutiplier, population, floatingTexts):
     for boat, pirate in boatAndPirate:
         population, gold, boatAndPirate, floatingTexts = checkSatisfaction(boatAndPirate, population, gold, floatingTexts)
-
-        closestObjectLocation, objectType, boatAndPirate, object = findClosestObject(placedItems, pirate)
-
-        if closestObjectLocation and not pirate.inCooldown:
-            pirate.nearObject = True
-            pirate.moveTowards(closestObjectLocation)
-        else:
-            pirate.nearObject = False
-        gold, boatAndPirate = piratePayment(pirate, gold, objectType, object, speedMultiplier)
+        pirate.updateSpeed(speedMultiplier)
+        gold, boatAndPirate  = piratePayment(pirate, gold, speedMultiplier)
         pirate.draw(screen, cameraX, cameraY, zoomLevel)
+
+    for enemy in enemyPirates:
+        enemy.draw(screen, cameraX, cameraY)
+        if not enemy.foundTarget:
+            enemy.findClosestObject(placedItems)
+            enemy.moveAround()
+        elif enemy.atTarget():
+            enemy.attack()
+        elif enemy.foundTarget:
+            enemy.moveTowards()
+            
     return gold, boatAndPirate, population, floatingTexts
 
 def toggleUpgradeBox(placedItems, adjustedMouseX, adjustedMouseY, gold, zoomLevel, cameraX, cameraY):
@@ -710,59 +749,6 @@ def drawUpgradeBox(placedItems, cameraX, cameraY, zoomLevel):
         elif isinstance(items["item"], Tent):
             tent = items["item"]
             tent.drawUpgrade(screen, cameraX, cameraY, zoomLevel)
-
-def drawBattleButton(screen):
-    buttonRect = pygame.Rect(700, 10, 90, 40)  # Adjust position and size
-    font = pygame.font.Font(None, 36)
-
-    # Draw the button
-    pygame.draw.rect(screen, (200, 0, 0), buttonRect)
-    text = font.render("Battle!", True, (255, 255, 255))
-    screen.blit(text, (buttonRect.x + 10, buttonRect.y + 5))
-
-    return buttonRect
-
-def battleButtonClicked(battleButton, event):
-    if event.type == pygame.MOUSEBUTTONDOWN:
-        mousePos = pygame.mouse.get_pos()
-        if battleButton.collidepoint(mousePos):
-            return True
-    return False
-
-def battleScrren(screen):
-    screen.fill((0, 0, 255))
-
-def spawnPlayerShip(screen):
-    ship = Boat((400,100), "none")
-    ship.drawBattleShip(screen)
-    return ship
-
-def movePlayerShip(ship, screen):
-    keys = pygame.key.get_pressed()
-    if keys[pygame.K_LEFT]:
-        ship.move(-ship.speed, 0)
-        ship.orientation = "movingLeft"
-    elif keys[pygame.K_RIGHT]:
-        ship.move(ship.speed, 0)
-        ship.orientation = "movingRight"
-    elif keys[pygame.K_UP]:
-        ship.move(0, -ship.speed)
-        ship.orientation = "movingUp"
-    elif keys[pygame.K_DOWN]:
-        ship.move(0, ship.speed)
-        ship.orientation = "movingDown"
-    ship.drawBattleShip(screen)
-
-def playerShoots():
-    pass
-
-def handleZoom(event, zoomLevel):
-    if event.type == pygame.MOUSEBUTTONDOWN:
-        if event.button == 4:  # Scroll up
-            zoomLevel = min(maxZoom, zoomLevel + zoomStep)
-        elif event.button == 5:  # Scroll down
-            zoomLevel = max(minZoom, zoomLevel - zoomStep)
-    return zoomLevel
 
 def adjustMouseCoordinates(mouseX, mouseY, cameraX, cameraY, zoomLevel):
     # Adjust mouse coordinates for zoom level
@@ -914,8 +900,20 @@ def moveFarmer(placedItems, pathGrid, screen, cameraX, cameraY):
            
             farmer.draw(screen, cameraX, cameraY)
 
+def enemyArriveAtIsland(enemyShips, enemiesArriving):
+    if enemiesArriving and not enemyAttack:
+        enemyShip = Boat((20, -500), "none")
+        enemyShips.add(enemyShip)
+        enemiesArriving = False
+    return enemiesArriving
 
-
+def enemyPiratesSpawn(enemyGroup, noOfPirates, position, enemyAttack):
+    if enemyAttack:
+        for i in range(noOfPirates + 1):
+            enemyPirate = Enemy(position)
+            enemyGroup.add(enemyPirate)
+        enemyAttack = False
+    return enemyAttack
 
 run = True
 while run:
@@ -927,22 +925,21 @@ while run:
             adjustedIslandWidth = islandWidth * zoomLevel
             adjustedIslandHeight = islandHeight * zoomLevel
 
-        if event.type == pygame.MOUSEBUTTONDOWN:
-            mouseX, mouseY = pygame.mouse.get_pos()
-            adjustedMouseX, adjustedMouseY = adjustMouseCoordinates(mouseX, mouseY, cameraX, cameraY, zoomLevel)
-            print("mouse",adjustedMouseX, adjustedMouseY)
-            handleSpeedButtonClick(mouseX, mouseY)
-            showStatsMenu = ToggleStatsDisplay(mouseX, mouseY, showStatsMenu)
-            gold, placedItems, selectedItem, isDock, noOfItems = handleMenuClicks(mouseX, mouseY, adjustedMouseX,
-                                        adjustedMouseY, gold, noOfItems, selectedItem, menuItems, isDock, islandWidth, islandHeight, gridSize, dockBoats)
-
-            gold = toggleUpgradeBox(placedItems, adjustedMouseX, adjustedMouseY, gold, zoomLevel, cameraX, cameraY)    
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                mouseX, mouseY = pygame.mouse.get_pos()
+                adjustedMouseX, adjustedMouseY = adjustMouseCoordinates(mouseX, mouseY, cameraX, cameraY, zoomLevel)
+                print("mouse",adjustedMouseX, adjustedMouseY)
+                handleSpeedButtonClick(mouseX, mouseY)
+                showStatsMenu = ToggleStatsDisplay(mouseX, mouseY, showStatsMenu)
+                gold, placedItems, selectedItem, isDock, noOfItems = handleMenuClicks(mouseX, mouseY, adjustedMouseX,
+                                            adjustedMouseY, gold, noOfItems, selectedItem, menuItems, isDock, islandWidth, islandHeight, gridSize, dockBoats)
+                gold = toggleUpgradeBox(placedItems, adjustedMouseX, adjustedMouseY, gold, zoomLevel, cameraX, cameraY)    
+    
     keys = pygame.key.get_pressed()
     cameraX, cameraY = cameraMovement(keys, cameraX, cameraY, speed)
-
     screen.fill(Blue)
     drawIsland(cameraX, cameraY, dockWidth, dockHeight, White)  
-    noOfItems, boatAndPirate, population = spawnBoat(noOfItems, boatAndPirate, population, cameraX, cameraY) #moves boat towards entrance
+    noOfItems, boatAndPirate, population, enemiesArriving, enemyAttack = spawnBoat(noOfItems, boatAndPirate, population, cameraX, cameraY, enemiesArriving, enemyAttack) #moves boat towards entrance
     drawPlacedItems(placedItems, cameraX, cameraY, zoomLevel)
     showFloatingTexts(screen, floatingTexts, cameraX, cameraY, font)
     increaseCropCount(speedMultiplier)
@@ -951,6 +948,8 @@ while run:
     gold = generateGoldAtDock(placedItems, gold, cameraX, cameraY, floatingTexts, screen, speedMultiplier)
     boatsAtDock(dockBoats, timer)
     drawBoats(screen, cameraX, cameraY)
+    enemiesArriving = enemyArriveAtIsland(enemyShips, enemiesArriving)
+    enemyAttack = enemyPiratesSpawn(enemyPirates, 5, (20, 20), enemyAttack)
     gold, boatAndPirate, population, floatingTexts = updatePirates(boatAndPirate, placedItems, gold, speedMultiplier, population, floatingTexts) #updates pirates movements and payments when interacting with palcedItems
     drawUpgradeBox(placedItems, cameraX, cameraY, zoomLevel) #when upgrade box is clicked shows it above item 
     drawMenuItems(menuItems)
