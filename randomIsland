@@ -1,0 +1,2348 @@
+import pygame
+import random
+from dock import Dock
+from boat import Boat
+from pirate import Pirate
+from tent import Tent
+from restuarant import Restaurant
+from farm import Farm, FarmGroup
+from cookhouse import Cookhouse
+from map import TileKind, Map
+from farmer import Farmer
+import time
+from path import Path, Land
+from datetime import datetime, timedelta
+import math
+from enemy import Enemy
+from watchTower import WatchTower
+from perlin_noise import PerlinNoise
+import numpy as np
+
+import pygame
+import random
+import time
+from restuarant import Restaurant
+import math
+
+class Pirate:
+    def __init__(self, position, payment):
+        self.position = [position[0], position[1]]
+        self.active = False  # Becomes active when the boat reaches the entrance dock
+        self.speed = 1
+        self.baseSpeed = 1
+        self.direction = random.choice([(1, 0), (-1, 0), (0, 1), (0, -1)])
+        self.inCooldown = False
+        self.objectStopTime = None
+        self.objectCooldownEnd = None
+        self.nearObject = False
+        self.payment = payment
+        self.sleep = 100
+        self.hunger = 100
+        self.satisfaction = 50
+        self.satisfactionTimeDecrease = time.time()
+        self.image = pygame.image.load(r"C:\Users\Study\PycharmProjects\NEA Images\1675450476_luffy-sprite.png")
+        self.image = pygame.transform.scale(self.image, (20, 20))
+        self.rect = self.image.get_rect(center=self.position)
+        self.state = "exploring"
+        self.atItem = False
+        self.found = False
+        self.maxHealth = 100
+        self.health = 100
+        self.enemy = None
+        self.damage = 40
+        self.attackCooldown = 3
+        self.lastAttackTime = 0
+        self.showHealthBar = False
+        self.healthBarStartTime = 0  
+        self.beingAttacked = False
+
+    def updateSpeed(self, speedMultiplier):
+        self.speed = self.baseSpeed * speedMultiplier
+
+    def moveTowards(self, targetPosition, landPositions, gridSize=20):
+        newX, newY = self.position  # Store current position
+        moved = False  # Track if the pirate moved
+
+        # Try moving horizontally first
+        if self.position[0] < targetPosition[0] and ((newX + self.speed)//gridSize * gridSize, newY//gridSize * gridSize) in landPositions:
+            newX += self.speed
+            moved = True
+        elif self.position[0] > targetPosition[0] and ((newX - self.speed)//gridSize * gridSize, newY//gridSize * gridSize) in landPositions:
+            newX -= self.speed
+            moved = True
+
+        # Try moving vertically if horizontal movement didn't work
+        if not moved:
+            if self.position[1] < targetPosition[1] and (newX//gridSize * gridSize, (newY + self.speed)//gridSize * gridSize) in landPositions:
+                newY += self.speed
+            elif self.position[1] > targetPosition[1] and (newX//gridSize * gridSize, (newY - self.speed)//gridSize * gridSize) in landPositions:
+                newY -= self.speed
+
+        # Update position if it's a valid land tile
+        if (newX//gridSize * gridSize, newY//gridSize * gridSize) in landPositions:
+            self.position = [newX, newY]
+            self.rect.center = self.position  # Update rect position
+        else:
+            print("Idontknowde")
+
+    def updatePirateStats(self, speedMultiplier):
+        if time.time() - self.satisfactionTimeDecrease >= 1:
+            self.hunger = max(0, self.hunger - (4*speedMultiplier))
+            self.sleep = max(0, self.sleep - (1*speedMultiplier))
+            self.satisfactionTimeDecrease = time.time()
+
+    def checkCooldown(self, speedMultiplier):
+        if self.objectCooldownEnd and time.time() > self.objectCooldownEnd:
+            self.inCooldown = False
+
+    def pay(self, objectType, object, speedMultiplier):
+        self.inCooldown = True
+        self.objectCooldownEnd = time.time() + 10  # 10-second cooldown
+        self.nearObject = False
+        self.objectStopTime = None
+        self.payment = 0
+        if objectType == "Tent":
+            if not hasattr(self, 'sleepIncrementStartTime'):
+                self.sleepIncrementStartTime = time.time()  # Set the start time only once
+                self.sleepIncrementCompleted = False  # Initial state for sleep increment
+
+            currentTime = time.time()  # Get the current time
+
+            # Check if 5 seconds have passed
+            if currentTime - self.sleepIncrementStartTime >= (5 / speedMultiplier):
+                print(currentTime - self.sleepIncrementStartTime)
+
+                self.sleep = 100  # Set sleep to 100 after 5 seconds
+                self.sleepIncrementCompleted = True  # Mark the increment as complete
+                self.payment = 400  # Payment after the wait
+                del self.sleepIncrementStartTime  # Remove the start time once it's paid
+
+                if hasattr(self, 'visitedTent'):
+                        del self.visitedTent  # Reset the flag when moving away
+                        object.removeVisitor(self)  # Remove the visitor from the restaurant
+
+        elif objectType == "Restaurant":
+            if object.food >= 2:
+                if not hasattr(self, 'hungerIncrementStartTime'):
+                    self.hungerIncrementStartTime = time.time()  # Set the start time only once
+                    self.payment = 0  # Initialize payment
+
+                currentTime = time.time()  # Get the current time
+
+                # Check if 5 seconds have passed
+                if currentTime - self.hungerIncrementStartTime >= (3 / speedMultiplier):
+                    self.hunger = 100  # Set hunger to 100 after 5 seconds
+                    self.payment = 800  # Payment after the wait
+                    object.food -= 2  # Deduct food from the restaurant
+                    del self.hungerIncrementStartTime  # Remove the start time once it's paid
+
+                    if hasattr(self, 'visitedRestaurant'):
+                        print("removed visitor", object.currentVisitors)
+                        del self.visitedRestaurant  # Reset the flag when moving away
+                        object.removeVisitor(self)  # Remove the visitor from the restaurant
+            else:
+                self.payment = 0  # Not enough food
+        return self.payment
+
+    def move(self, landPositions, gridSize=20):
+        # Calculate the potential new position
+        new_position = [self.position[0] + self.direction[0] * self.speed, 
+                    self.position[1] + self.direction[1] * self.speed]
+        gridPosition = (new_position[0] // gridSize * gridSize, new_position[1] // gridSize * gridSize)
+    
+        # Ensure the new position is within landPositions
+        if tuple(gridPosition) in landPositions:
+            self.position = new_position
+            self.rect.center = self.position
+        # Randomly change direction occasionally
+        if random.random() < 0.02:
+            self.direction = random.choice([(1, 0), (-1, 0), (0, 1), (0, -1)])
+
+    def findClosestObject(self, item, placedItems):
+        closestDistance = float('inf')
+        closestPosition = None
+        itemObject = None
+        
+        # Iterate through all placed items to find the nearest restaurant or tent
+        for placedItem in placedItems:
+            # Check if the placed item matches the given string (e.g., "restaurant" or "tent")
+            if placedItem["item"].__class__.__name__.lower() == item:
+                itemPosition = placedItem["pos"]
+                
+                # Calculate the Euclidean distance between the pirate and the item
+                distance = math.sqrt((self.position[0] - itemPosition[0])**2 + (self.position[1] - itemPosition[1])**2)
+                
+                if self not in placedItem["item"].visitors:
+                    # Update the closest item if this one is closer
+                    if distance < closestDistance and placedItem["item"].isAvailable():
+                        closestDistance = distance
+                        closestPosition = itemPosition
+                        itemObject = placedItem["item"]
+                    elif not placedItem["item"].isAvailable():
+                        print("No available items", placedItem["item"].currentVisitors, placedItem["item"].isAvailable())
+                else:
+                    closestPosition = placedItem["pos"]
+                    itemObject = placedItem["item"]
+        
+        return closestPosition, itemObject
+
+    def updateStates(self):
+        if self.hunger <= 40:
+            self.state = "hungry"
+        elif self.sleep <= 20:
+            self.state = "tired"
+        else:
+            self.state = "exploring"
+
+    def isAtObject(self, itemPos):
+        # Calculate the Euclidean distance between the pirate and the item
+        distance = math.sqrt((self.position[0] - itemPos[0])**2 + (self.position[1] - itemPos[1])**2)
+        # Check if the pirate is within a certain distance of the item
+        if distance < 30:
+            return True
+        else:
+            return False
+        
+    def incrementCompleted(self, item, itemObject):
+        if item == "tent":
+            if self.sleep == 100:
+                return True
+            else:
+                return False
+        elif item == "Restaurant":
+            if self.hunger == 100:
+                return True
+            else:
+                return False
+    
+    def update(self,speedMultiplier, placedItems, landPositions):
+        self.payment = 0
+        self.updateStates()
+        if self.state == "exploring":
+            self.atItem = False
+            self.move(landPositions)
+        elif self.state == "hungry":
+            restaurantPosition, itemObject = self.findClosestObject("restaurant", placedItems)
+            if itemObject is None:
+                self.state = "exploring"
+                self.atItem = False
+            else:
+                if self.isAtObject(restaurantPosition):
+                    self.atItem = True
+                    if not hasattr(self, 'visitedRestaurant'):  # Ensure 'addVisitor' is only called once
+                        itemObject.addVisitor(self)
+                        self.visitedRestaurant = True  # Set a flag to avoid multiple calls
+                    self.payment = self.pay("Restaurant", itemObject, speedMultiplier)
+                self.moveTowards(restaurantPosition, landPositions)
+
+        elif self.state == "tired":
+            tentPosition, itemObject = self.findClosestObject("tent", placedItems)
+            if itemObject is None:
+                self.state = "exploring"
+                self.atItem = False
+            else:
+                if self.isAtObject(tentPosition):
+                    self.atItem = True
+                    if not hasattr(self, 'visitedTent'):  
+                        itemObject.addVisitor(self)
+                        self.visitedTent = True  # Set a flag to avoid multiple calls
+                if self.isAtObject(tentPosition):
+                    self.payment = self.pay("Tent", itemObject, speedMultiplier)
+                else:
+                    self.moveTowards(tentPosition, landPositions)
+        if not self.atItem:
+            self.updatePirateStats(speedMultiplier)
+        
+        return self.payment
+    
+    def drawSatisfactionBar(self, screen, cameraX, cameraY, zoomLevel):
+        
+        barX = (self.position[0] * zoomLevel) + cameraX - (25 * zoomLevel)
+        barY = (self.position[1] * zoomLevel) + cameraY - (40 * zoomLevel)
+
+        
+        barWidth = int(25 * zoomLevel)
+        barHeight = int(4 * zoomLevel)
+        spacing = int(2 * zoomLevel)  # Space between bars, also scaled
+
+        # Calculate filled width for hunger and sleep bars based on zoomed bar width
+        hungerFillWidth = int((self.hunger / 100) * barWidth)
+        sleepFillWidth = int((self.sleep / 100) * barWidth)
+
+        # Draw hunger bar
+        pygame.draw.rect(screen, (100, 100, 100), (barX, barY, barWidth, barHeight))
+        pygame.draw.rect(screen, (255, 0, 0), (barX, barY, hungerFillWidth, barHeight))
+
+        # Draw sleep bar
+        pygame.draw.rect(screen, (100, 100, 100), (barX, barY + barHeight + spacing, barWidth, barHeight))
+        pygame.draw.rect(screen, (0, 0, 255), (barX, barY + barHeight + spacing, sleepFillWidth, barHeight))
+
+        # Adjust font size based on zoom level
+        fontSize = int(10 * zoomLevel)  # Scale font size
+        font = pygame.font.Font(None, fontSize)
+
+        # Render labels with adjusted size
+        hungerLabel = font.render("Food", True, (255, 255, 255))  # White text
+        sleepLabel = font.render("Sleep", True, (255, 255, 255))  # White text
+        healthLabel = font.render("Health", True, (255, 255, 255))  # White text
+
+        # Adjust label positions based on zoom
+        screen.blit(hungerLabel, (barX - hungerLabel.get_width() - int(5 * zoomLevel), barY))
+        screen.blit(sleepLabel, (barX - sleepLabel.get_width() - int(5 * zoomLevel), barY + barHeight + spacing))
+    
+    def drawHealthBar(self, screen, cameraX, cameraY):
+         # Calculate health bar width
+        bar_width = self.rect.width
+        bar_height = 5
+        health_ratio = self.health / self.maxHealth
+        health_bar_width = int(bar_width * health_ratio)
+
+        # Define health bar positions
+        bar_x = self.rect.x + cameraX
+        bar_y = self.rect.y - bar_height - 2 + cameraY # Position it above the building
+
+        # Draw background bar (red)
+        pygame.draw.rect(screen, (255, 0, 0), (bar_x, bar_y, bar_width, bar_height))
+
+        # Draw health bar (green)
+        pygame.draw.rect(screen, (0, 255, 0), (bar_x, bar_y, health_bar_width, bar_height))
+
+        # Hide health bar after 2 seconds
+        current_time = time.time()
+        if current_time - self.healthBarStartTime > 2:
+            self.showHealthBar = False
+
+    def draw(self, screen, cameraX, cameraY, zoomLevel):
+        if self.active:
+            screen.blit(self.image, (self.rect.x + cameraX, self.rect.y + cameraY))
+        # Draw the health bar if it should be displayed
+            if self.showHealthBar:
+                self.drawHealthBar(screen, cameraX, cameraY)
+
+            # Adjust the satisfaction bar position based on zoom
+            self.drawSatisfactionBar(screen, cameraX, cameraY, zoomLevel)
+
+    def findEnemies(self, enemyPirates):
+        if not self.enemy:
+            for pirate in enemyPirates:
+                distance = math.sqrt((self.position[0] - pirate.rect.centerx)**2 + (self.position[1] - pirate.rect.centery)**2)
+                if distance < 500:
+                    self.enemy = pirate
+                    break
+        else:
+            distance = math.sqrt((self.position[0] - self.enemy.rect.centerx)**2 + (self.position[1] - self.enemy.rect.centery)**2)
+            if distance > 500:
+                self.enemy = None
+    
+    def attack(self):
+        currentTime = time.time()
+        if self.enemy:
+            if currentTime - self.lastAttackTime > self.attackCooldown:
+                self.lastAttackTime = currentTime
+                if self.enemy.health > 0:
+                    self.enemy.showHealthBar = True
+                    self.enemy.healthBarStartTime = time.time()
+                    self.enemy.health -= self.damage
+                else:
+                    self.enemy = None
+
+import pygame
+import time
+import random
+from farmer import Farmer
+from path import Path
+import math
+
+class Enemy(pygame.sprite.Sprite):
+    def __init__(self, position):
+        super().__init__()  # Initialise the sprite base class
+        self.speed = 1
+        self.image = pygame.image.load(r'C:\Users\Study\Pirate Tycoon\images\farmer.png')
+        self.image = pygame.transform.scale(self.image, (10, 10))
+        self.rect = self.image.get_rect(center=position)
+        self.attackCooldown = 3
+        self.damage = 40
+        self.lastAttackTime = 0
+        self.foundTarget = False
+        self.targetPos = None
+        self.target = None
+        self.changeDirectionTime = 0
+        self.maxHealth = 100
+        self.health = 100
+        self.showHealthBar = False
+        self.healthBarStartTime = 0
+        self.direction = random.choice([(1, 0), (-1, 0), (0, 1), (0, -1)])
+
+    def findClosestObject(self, placedItems):
+        closestDistance = float('inf')
+        for placedItem in placedItems:
+            object = placedItem["item"]
+            if not isinstance(object, Farmer) and not isinstance(object, Path):
+                if not object.beingAttacked:
+                    distance = ((self.rect.x - object.rect.x) ** 2 + (self.rect.y - object.rect.y) ** 2) ** 0.5
+                    if distance < closestDistance:
+                        closestDistance = distance
+                        targetObject = object
+                        self.targetPos = object.rect.x, object.rect.y
+                        self.foundTarget = True
+
+        if self.foundTarget:
+            self.target = targetObject
+            targetObject.beingAttacked = True
+
+    def findClosestPirate(self, boatAndPirates):
+        closestDistance = float('inf')
+        for boat, pirate in boatAndPirates:
+            if pirate is not None:
+                distance = ((self.rect.x - pirate.rect.centerx) ** 2 + (self.rect.y - pirate.rect.centery) ** 2) ** 0.5
+                if not pirate.beingAttacked:
+                    if distance < closestDistance:
+                        closestDistance = distance
+                        targetObject = pirate
+                        self.targetPos = pirate.rect.centerx, pirate.rect.centery
+                        self.foundTarget = True
+            if self.foundTarget:
+                self.target = targetObject
+                self.target.beingAttacked = True
+                    
+    def moveTowards(self):
+        if self.target:
+            self.targetPos = (self.target.rect.centerx, self.target.rect.centery)  # Update dynamically
+            targetPosition = self.targetPos
+
+            targetPosition = self.targetPos
+            if self.rect.centerx < targetPosition[0]:
+                self.rect.centerx += self.speed
+            elif self.rect.centerx > targetPosition[0]:
+                self.rect.centerx -= self.speed
+            if self.rect.centery < targetPosition[1]:
+                self.rect.centery += self.speed
+            elif self.rect.centery > targetPosition[1]:
+                self.rect.centery -= self.speed
+    
+    def atTarget(self):
+        targetX, targetY = self.targetPos
+        distance = math.sqrt((self.rect.x - targetX) ** 2 + (self.rect.y - targetY)**2)
+        if distance <= 30:
+            return True
+        return False
+    
+    def attack(self):
+        # Attack the target
+        currentTime = time.time()
+        if currentTime - self.lastAttackTime > self.attackCooldown:
+            self.lastAttackTime = currentTime
+            self.target.showHealthBar = True
+            self.target.healthBarStartTime = time.time()
+            self.target.health -= self.damage
+        if self.target.health <= 0:
+            self.target = None
+            self.foundTarget = False
+
+    def drawHealthBar(self, screen, cameraX, cameraY):
+         # Calculate health bar width
+        bar_width = self.rect.width
+        bar_height = 5
+        health_ratio = self.health / self.maxHealth
+        health_bar_width = int(bar_width * health_ratio)
+
+        # Define health bar positions
+        bar_x = self.rect.x + cameraX
+        bar_y = self.rect.y - bar_height - 2 + cameraY # Position it above the building
+
+        # Draw background bar (red)
+        pygame.draw.rect(screen, (255, 0, 0), (bar_x, bar_y, bar_width, bar_height))
+
+        # Draw health bar (green)
+        pygame.draw.rect(screen, (0, 255, 0), (bar_x, bar_y, health_bar_width, bar_height))
+
+        # Hide health bar after 2 seconds
+        current_time = time.time()
+        if current_time - self.healthBarStartTime > 2:
+            self.showHealthBar = False
+    
+    def draw(self, screen, cameraX, cameraY):
+        screen.blit(self.image, (self.rect.x + cameraX, self.rect.y + cameraY))
+        # Draw the health bar if it should be displayed
+        if self.showHealthBar:
+            self.drawHealthBar(screen, cameraX, cameraY)
+
+    def moveAround(self, landPositions, gridSize=20):
+       # Calculate the next position
+        new_position = [self.rect.x + self.direction[0] * self.speed, 
+                        self.rect.y + self.direction[1] * self.speed]
+
+        gridPosition = (new_position[0] // gridSize * gridSize, new_position[1] // gridSize * gridSize)
+
+        # Only move if the new position is on land
+        if tuple(gridPosition) in landPositions:
+            self.rect.x, self.rect.y = new_position[0], new_position[1]
+        # Randomly change direction occasionally
+        if random.random() < 0.02:
+            self.direction = random.choice([(1, 0), (-1, 0), (0, 1), (0, -1)]) 
+
+import pygame
+
+class Boat(pygame.sprite.Sprite):
+    def __init__(self, startPos, dockType):
+        super().__init__()
+        self.position = startPos
+        self.image = pygame.image.load(r"C:\Users\Study\PycharmProjects\NEA Images\d68usui-ef6c334e-11b7-4f75-88b9-ecd34c5d4bf0.png")
+        self.image = pygame.transform.scale(self.image, (20, 60))
+        self.rect = self.image.get_rect(center=startPos)
+        self.speed = 2
+        self.baseSpeed = 2
+        self.active = True  # Track if the boat is still moving
+        self.orientation = "movingDown"
+        self.dockType = dockType
+        self.returning = False
+        self.speedSet = False
+
+    def updateSpeed(self, speedMultiplier):
+        self.speed = self.baseSpeed * speedMultiplier
+    
+    def isAtTarget(self, targetPos, tolerance=10):
+        # Returns True if the boat is within the tolerance distance from the target position
+        if abs(self.rect.x - targetPos[0]) <= tolerance and abs(self.rect.y - targetPos[1]) <= tolerance:
+            return True
+        return False
+
+    def moveTowards(self, targetPos):
+        if self.active:
+            directionX = targetPos[0] - self.rect.x
+            directionY = targetPos[1] - self.rect.y
+            distance = (directionX ** 2 + directionY ** 2) ** 0.5
+
+            # Normalize direction and move the boat towards the target position, using the boat's speed
+            if distance > self.speed:
+                # Normalize direction and move the boat towards the target position
+                self.rect.x += directionX / distance * self.speed
+                self.rect.y += directionY / distance * self.speed
+            else:
+                # Move the boat directly to the target position and stop moving
+                self.rect.x = targetPos[0]
+                self.rect.y = targetPos[1]
+                self.active = False  # Stop moving when at the target position
+
+    def draw(self, screen, cameraX, cameraY):
+
+        # Scale the image based on the zoom level
+        scaledImage = pygame.transform.scale(self.image,
+                                              (int(self.image.get_width()  ),
+                                               int(self.image.get_height()  )))
+
+        # Adjust the position of the object with zoom
+        screen.blit(scaledImage, (self.rect.x  + cameraX, self.rect.y  + cameraY))
+
+    def drawBattleShip(self, screen):
+        if self.orientation == "movingRight":
+            screen.blit(pygame.transform.rotate(self.image, 90), (self.position[0], self.position[1]))
+        if self.orientation == "movingLeft":
+            screen.blit(pygame.transform.rotate(self.image, -90), (self.position[0], self.position[1]))
+        if self.orientation == "movingUp":
+            screen.blit(pygame.transform.rotate(self.image, 180), (self.position[0], self.position[1]))
+        if self.orientation == "movingDown":
+            screen.blit(self.image, (self.position[0], self.position[1]))
+
+
+    def move(self, x, y):
+        self.position = (self.position[0] + x, self.position[1] + y)
+        self.rect.topleft = self.position
+import pygame
+import time
+
+class Building(pygame.sprite.Sprite):
+    def __init__(self, position):
+        super().__init__()
+        self.position = position
+        self.level = 1
+        self.image = None
+        self.rect = None
+        self.visibleUpgradeBox = True
+        self.upgradeCost = 30
+        self.capacity = 1
+        self.currentVisitors = 0
+        self.visitors = []
+        self.beingAttacked = False
+        self.maxHealth = 100
+        self.health = 100
+        self.showHealthBar = False
+        self.healthBarStartTime = 0
+
+    def isAvailable(self):
+        return len(self.visitors) < self.capacity
+
+    def addVisitor(self, pirate):
+        if len(self.visitors) < self.capacity and pirate not in self.visitors:
+            self.visitors.append(pirate)
+    
+    def removeVisitor(self, pirate):
+        if pirate in self.visitors:
+            self.visitors.remove(pirate)
+
+    def toggleUpgrade(self, mousePos):
+        # If dock is clicked, show the upgrade box
+        if self.rect.collidepoint(mousePos):
+            self.visibleUpgradeBox = not self.visibleUpgradeBox
+
+    def drawUpgrade(self, screen, cameraX, cameraY, zoomLevel):
+        # Draw the upgrade box if visible
+        if self.visibleUpgradeBox:
+            # Adjust position and dimensions for zoom
+            adjustedX = self.rect.x * zoomLevel - 25 * zoomLevel
+            adjustedY = self.rect.y * zoomLevel - 30 * zoomLevel
+            boxWidth = int(40 * zoomLevel)
+            boxHeight = int(10 * zoomLevel)
+
+            # Draw the scaled upgrade box
+            pygame.draw.rect(screen, (200, 200, 200), (adjustedX + cameraX, adjustedY + cameraY, boxWidth, boxHeight))
+
+            # Adjust font size for zoom
+            fontSize = int(8 * zoomLevel)
+            font = pygame.font.SysFont(None, fontSize)
+
+            # Render and position text
+            text = font.render(f"Upgrade {self.upgradeCost}$", True, (0, 0, 0))
+            textX = adjustedX + 5 * zoomLevel  # Adjust text padding for zoom
+            textY = adjustedY + 5 * zoomLevel
+            screen.blit(text, (textX + cameraX, textY + cameraY))
+
+    def upgradeBoxClicked(self, mousePos, gold):
+        if self.visibleUpgradeBox:
+            upgradeBoxRect = pygame.Rect(self.rect.x - 25, self.rect.y - 30, 200, 25)
+        return gold
+    
+    def drawHealthBar(self, screen, cameraX, cameraY):
+         # Calculate health bar width
+        bar_width = self.rect.width
+        bar_height = 5
+        health_ratio = self.health / self.maxHealth
+        health_bar_width = int(bar_width * health_ratio)
+
+        # Define health bar positions
+        bar_x = self.rect.x + cameraX
+        bar_y = self.rect.y - bar_height - 2 + cameraY # Position it above the building
+
+        # Draw background bar (red)
+        pygame.draw.rect(screen, (255, 0, 0), (bar_x, bar_y, bar_width, bar_height))
+
+        # Draw health bar (green)
+        pygame.draw.rect(screen, (0, 255, 0), (bar_x, bar_y, health_bar_width, bar_height))
+
+        # Hide health bar after 2 seconds
+        current_time = time.time()
+        if current_time - self.healthBarStartTime > 2:
+            self.showHealthBar = False
+
+    def draw(self, screen, cameraX, cameraY):
+        # Draw the building
+        screen.blit(self.image, (self.rect.x + cameraX, self.rect.y + cameraY))
+
+        # Draw the health bar if it should be displayed
+        if self.showHealthBar:
+            self.drawHealthBar(screen, cameraX, cameraY)
+
+    
+
+import pygame
+from buildings import Building
+class Cookhouse(Building):
+    def __init__(self, position):
+        super().__init__(position)
+        self.image = pygame.image.load(r"C:\Users\Study\Pirate Tycoon\images\cookhouse.png")
+        self.image = pygame.transform.scale(self.image, (20, 20))
+        self.rect = self.image.get_rect(topleft=position)
+        self.position = position
+        self.label = "Cookhouse"
+        self.crops = 0  # Total food stored
+
+    def drawFoodCount(self, screen, cameraX, cameraY):
+        font = pygame.font.SysFont(None, 20)
+        food_text = font.render(f"Crops ({self.crops})", True, (255, 255, 255))
+        screen.blit(food_text, (self.rect.x + cameraX, self.rect.y + cameraY - 20))
+
+import time
+import pygame
+from buildings import Building
+class Dock(Building):
+    def __init__(self, size, position, orientation):
+        super().__init__(position)
+        self.image = pygame.image.load(r"C:\Users\Study\PycharmProjects\NEA Images\Wp3TJeiWRvK6ltBUFT4DdQ.jpg")
+        self.image = pygame.transform.scale(self.image, (20, 20))
+        if orientation == "right":
+            self.orientation = "right"
+        elif orientation == "left":
+            self.orientation = "left"
+        elif orientation == "top":
+            self.orientation = "top"
+        elif orientation == "bottom":
+            self.orientation = "bottom"
+        self.position = position
+        self.rect = self.image.get_rect(topleft=position)
+        self.size = size
+        self.goldRate = self.setGoldRate()
+        self.returnFrequency = self.setReturnFrequency()
+        self.level = 1
+        self.lastGenerated = time.time()
+        self.visibleUpgradeBox = True
+        self.upgradeCost = 30
+        self.boatAdded = False
+
+    def setGoldRate(self):
+        if self.size == 'small':
+            return 100
+        elif self.size == 'medium':
+            return 200
+        elif self.size == 'large':
+            return 300
+
+    def setReturnFrequency(self):
+        if self.size == "small":
+            return 5
+        elif self.size == "medium":
+            return 3
+        elif self.size == "large":
+            return 2
+
+    def isTimeForReturn(self, speedMultiplier):
+        currentTime = time.time()
+        if currentTime - self.lastGenerated >= self.returnFrequency/ speedMultiplier:
+            self.lastGenerated = currentTime
+            return True
+        return False
+
+    def drawUpgrade(self, screen, cameraX, cameraY, zoomLevel):
+        if self.visibleUpgradeBox:
+            boxWidth = int(20 * zoomLevel)
+            boxHeight = int(20 * zoomLevel)
+            adjustedX = self.rect.centerx * zoomLevel - boxWidth // 2
+            adjustedY = self.rect.top * zoomLevel - boxHeight - 10 * zoomLevel  
+
+            pygame.draw.rect(screen, (200, 200, 200), 
+                            (adjustedX + cameraX, adjustedY + cameraY, boxWidth, boxHeight))
+
+            fontSize = int(8 * zoomLevel)
+            font = pygame.font.SysFont(None, fontSize)
+
+            text = font.render(f"Upgrade {self.upgradeCost}$", True, (0, 0, 0))
+            textRect = text.get_rect(center=(adjustedX + boxWidth / 2 + cameraX, 
+                                            adjustedY + boxHeight / 2 + cameraY))
+            screen.blit(text, textRect)
+
+
+    def toggleUpgrade(self, mousePos):
+        # If dock is clicked, show the upgrade box
+        if self.rect.collidepoint(mousePos):
+            self.visibleUpgradeBox = not self.visibleUpgradeBox
+
+    def upgradeBoxClicked(self,mousePos, gold):
+        if self.visibleUpgradeBox:
+            upgradeBoxRect = pygame.Rect(self.rect.x - 25 , self.rect.y - 30, 200, 25)
+
+            if upgradeBoxRect.collidepoint(mousePos) and gold >= self.upgradeCost:
+                self.goldRate += 50
+                if self.returnFrequency > 1:
+                    self.returnFrequency -= 1
+                gold -= self.upgradeCost
+                self.upgradeCost += 100
+        return gold
+import pygame
+from bullet import Bullet
+
+class EnemyShip(pygame.sprite.Sprite):
+    def __init__(self, x, y):
+        super().__init__()
+        self.image = pygame.Surface((50, 30))  # Enemy ship size
+        self.image.fill((255, 0, 0))  # Red colour for enemy ships
+        self.rect = self.image.get_rect(center=(x, y))
+        self.health = 100
+
+    def moveTowardsPlayer(self, playerShip):
+        # Calculate direction to the player
+        playerX, playerY = playerShip.rect.center
+        dx = playerX - self.rect.centerx
+        dy = playerY - self.rect.centery
+        distance = (dx**2 + dy**2)**0.5
+        if distance != 0:
+            dx /= distance
+            dy /= distance
+
+        # Reduce speed for the enemy ship
+        enemySpeed = 1.5  # Slower than the player's speed
+        self.rect.x += dx * enemySpeed
+        self.rect.y += dy * enemySpeed
+
+    def shootPlayer(self, playerShip, bulletsGroup):
+        if pygame.time.get_ticks() % 60 == 0:  # Shoot periodically
+            dx = playerShip.rect.centerx - self.rect.centerx
+            dy = playerShip.rect.centery - self.rect.centery
+            distance = (dx**2 + dy**2)**0.5
+            if distance != 0:
+                dx /= distance
+                dy /= distance
+
+            # Set a bullet speed (adjust as needed)
+            bulletSpeed = 5
+            velocity_x = dx * bulletSpeed
+            velocity_y = dy * bulletSpeed
+
+            # Create the bullet
+            bullet = Bullet(self.rect.centerx, self.rect.centery, velocity_x, velocity_y)
+            bulletsGroup.add(bullet)
+
+import pygame
+from buildings import Building
+
+class Farm(Building):
+    def __init__(self, position):
+        super().__init__(position)
+        self.image = pygame.image.load(r"C:\Users\Study\Pirate Tycoon\images\farm.png")
+        self.image = pygame.transform.scale(self.image, (20, 20))
+        self.rect = self.image.get_rect(topleft=position)
+        self.position = position
+        self.cropCount = 0
+        self.nearbyFarms = 0
+        self.label = "Farm"
+        self.lastCropTime = pygame.time.get_ticks()
+        self.group = None
+
+    def increaseCropCount(self):
+        currentTime = pygame.time.get_ticks()  # Get the current time in milliseconds
+        if currentTime - self.lastCropTime >= 1000:  # Check if 1 second has passed
+            self.cropCount += 1
+            self.lastCropTime = currentTime  # Update the last crop time
+
+class FarmGroup:
+    def __init__(self):
+        self.farms = []  # List of farms in this group
+        self.coordinates = []
+        self.cropCount = 0  # Shared crop count
+        self.lastCropTime = pygame.time.get_ticks()  # Time tracker for crop generation
+        self.label = "FarmGroup"
+        self.baseSpeed = 1
+        self.speed = 1
+
+    def addFarm(self, farm):
+        if farm not in self.farms:
+            self.farms.append(farm)
+            self.coordinates.append((farm.rect.centerx, farm.rect.centery))
+            farm.group = self  # Link the farm to this group
+    
+    def getCoordinates(self):
+        return self.coordinates
+
+    def generateCrops(self, speedMultiplier):
+        currentTime = pygame.time.get_ticks()
+        adjustedSpeed = self.baseSpeed * speedMultiplier  # Adjust crop generation speed by multiplier
+        if currentTime - self.lastCropTime >= 1000 / adjustedSpeed:  # Generate crops every second
+            self.cropCount += len(self.farms)
+            self.lastCropTime = currentTime
+
+    def drawCropCount(self, screen, font, cameraX, cameraY):
+        if self.farms:
+            # Display crop count at the center of the group
+            centerX = sum(farm.rect.x for farm in self.farms) / len(self.farms)
+            centerY = sum(farm.rect.y for farm in self.farms) / len(self.farms)
+            text = f"Farm ({self.cropCount})"
+            textSurface = font.render(text, True, (255, 255, 255))
+            textRect = textSurface.get_rect(center=(centerX + cameraX, centerY + cameraY - 20))
+            screen.blit(textSurface, textRect)
+
+import pygame
+from farm import Farm, FarmGroup
+from cookhouse import Cookhouse
+from collections import deque
+from restuarant import Restaurant
+
+class Farmer(pygame.sprite.Sprite):
+    def __init__(self, position):
+        super().__init__()
+        self.position = position
+        self.image = pygame.image.load(r"C:\Users\Study\Pirate Tycoon\images\farmer.png")
+        self.image = pygame.transform.scale(self.image, (10, 10))
+        self.rect = self.image.get_rect(center=self.position)
+        self.speed = 1
+        self.baseSpeed = 1
+        self.carryingCrops = False
+        self.carryingFood = False
+        self.label = "Farmer"
+        self.crops = 0
+        self.role = None
+    
+    def checkBuildingAtEnd(self, pathGrid, placedItems):
+        position = tuple(self.position)
+        queue = deque([position])
+        visited = set([position])  # Initialize with starting position
+        
+        def isWithinRange(pos1, pos2, threshold=15):
+            dx = pos1[0] - pos2[0]
+            dy = pos1[1] - pos2[1]
+            return (dx**2 + dy**2)**0.5 <= threshold
+        
+        while queue:
+            current = queue.popleft()
+            
+            # Check if the current position is near a placed building
+            for item in placedItems:
+                buildingPosition = (
+                    item["item"].position[0] + 20 // 2,
+                    item["item"].position[1] + 20 // 2
+                )
+                if isWithinRange(current, buildingPosition):
+                    if isinstance(item["item"], Farm):
+                        return "farm"
+                    elif isinstance(item["item"], Restaurant):
+                        return "restaurant"
+            
+            # Get neighbors
+            neighbors = [
+                (current[0], current[1] - 1),  # up
+                (current[0] + 1, current[1]),  # right
+                (current[0], current[1] + 1),  # down
+                (current[0] - 1, current[1])   # left
+            ]
+            
+            # Check each neighbor
+            for neighbor in neighbors:
+                # Only add neighbor if it's in the pathGrid, is walkable, and hasn't been visited
+                if (neighbor in pathGrid and 
+                    pathGrid[neighbor] and 
+                    neighbor not in visited):
+                    queue.append(neighbor)
+                    visited.add(neighbor)
+                    
+            # Optional: Add debug print statements
+            #print(f"Current position: {current}")
+            #print(f"Queue size: {len(queue)}")
+            #print(f"Visited positions: {len(visited)}")
+            
+        return None
+
+    def assignFarmerRole(self, pathGrid, placedItems):
+        buildingType = self.checkBuildingAtEnd(pathGrid, placedItems)
+        if buildingType == "farm":
+            self.role = "farmToCookhouse"
+        elif buildingType == "restaurant":
+            self.role = "cookhouseToRestaurant"
+        else:
+            self.role = None  # No valid role found; farmer won't move
+            
+ 
+    def moveTowards(self, item, pathGrid):
+        currentPos = tuple(self.position)
+        targetPos = (item.position[0] + 20 // 2, item.position[1] + 20 // 2)
+        
+        # If we're already close enough, don't move
+        if ((currentPos[0] - targetPos[0]) ** 2 + (currentPos[1] - targetPos[1]) ** 2) ** 0.5 <= 2:
+            return
+        
+        # BFS to find the shortest path
+        queue = deque([currentPos])
+        visited = set()
+        visited.add(currentPos)
+        parent = {currentPos: None}
+        targetFound = False
+        finalPos = None
+
+        # Define the base step size for the grid
+        GRID_STEP = self.speed  # Use smallest possible step for pathfinding
+
+        while queue and not targetFound:
+            current = queue.popleft()
+            
+            # Check if we're close enough to target
+            if ((current[0] - targetPos[0]) ** 2 + (current[1] - targetPos[1]) ** 2) ** 0.5 <= 15:
+                targetFound = True
+                finalPos = current
+                break
+
+            # Use single-unit steps for pathfinding
+            neighbors = [
+                (current[0], current[1] - GRID_STEP),  # up
+                (current[0] + GRID_STEP, current[1]),  # right
+                (current[0], current[1] + GRID_STEP),  # down
+                (current[0] - GRID_STEP, current[1])   # left
+            ]
+
+            for neighbor in neighbors:
+                neighbor = tuple(map(int, neighbor))
+                if (neighbor in pathGrid and pathGrid[neighbor] and neighbor not in visited):
+                    queue.append(neighbor)
+                    visited.add(neighbor)
+                    parent[neighbor] = current
+
+        if targetFound:
+            # Reconstruct path
+            path = []
+            current = finalPos
+            while current is not None:
+                path.append(current)
+                current = parent[current]
+            path.reverse()
+
+            # Move towards next position using speed
+            if len(path) > 1:
+                nextPos = path[1]
+                # Scale movement by the farmer's speed and multiplier
+                moveDistance = self.speed  
+                # Calculate direction and normalize movement to the next position
+                directionX = nextPos[0] - currentPos[0]
+                directionY = nextPos[1] - currentPos[1]
+                distance = (directionX**2 + directionY**2) ** 0.5
+                
+                if distance > 0:
+                    # Normalize the direction and multiply by speed and multiplier
+                    normalizedX = directionX / distance * moveDistance
+                    normalizedY = directionY / distance * moveDistance
+                    
+                    # Update position
+                    self.position[0] += normalizedX
+                    self.position[1] += normalizedY
+                    self.rect.center = self.position
+        else:
+            print(f"No path found from {currentPos} to {targetPos}")
+            # Optional: print some debug info about the pathGrid around current position
+            print("Neighbors available:")
+            for dx in [-GRID_STEP, 0, GRID_STEP]:
+                for dy in [-GRID_STEP, 0, GRID_STEP]:
+                    check_pos = (currentPos[0] + dx, currentPos[1] + dy)
+                    if check_pos in pathGrid:
+                        print(f"Position {check_pos}: {pathGrid[check_pos]}")
+
+        
+
+    def calculateDistance(self, target):
+        return ((self.position[0] - target.position[0]) ** 2 + (self.position[1] - target.position[1]) ** 2) ** 0.5
+
+    def hasAPath(self, target, pathGrid, gridSize=20):
+        start = (self.position[0] // gridSize * gridSize, self.position[1] // gridSize * gridSize)
+        end = (target.position[0] // gridSize * gridSize, target.position[1] // gridSize * gridSize)
+
+         # Check if start is within 20 pixels of end
+        if ((start[0] - end[0]) ** 2 + (start[1] - end[1]) ** 2) ** 0.5 <= 20:
+            return True
+
+        queue = deque([start])
+        visited = set()
+        visited.add(start)
+
+        while queue:
+            current = queue.popleft()
+
+            if ((current[0] - end[0]) ** 2 + (current[1] - end[1]) ** 2) ** 0.5 <= 20:
+                return True
+
+            # Get neighbors (up, down, left, right)
+            neighbors = [
+                (current[0] + gridSize, current[1]),
+                (current[0] - gridSize, current[1]),
+                (current[0], current[1] + gridSize),
+                (current[0], current[1] - gridSize)
+            ]
+          
+            for neighbor in neighbors:
+                if neighbor in pathGrid and pathGrid[neighbor] and neighbor not in visited:
+                    queue.append(neighbor)
+                    visited.add(neighbor)
+
+        return False
+
+    def isAtFarm(self, farm):
+        farmX = farm.position[0] + 20 // 2
+        farmY = farm.position[1] + 20 // 2
+        xDiff = abs(self.position[0] - farmX)
+        yDiff = abs(self.position[1] - farmY)
+        
+        # Check if the farmer is within 20 pixels of the farm
+        return xDiff <= 15 and yDiff <= 15
+
+    def draw(self, screen, cameraX, cameraY):
+        screen.blit(self.image, (self.rect.x + cameraX, self.rect.y + cameraY))
+        font = pygame.font.SysFont("arial", 14)
+        cropText = font.render(f"Crops ({self.crops})", True, (255, 255, 255))  # White text
+        textPos = (self.rect.x + cameraX, self.rect.y + cameraY - 15)
+        screen.blit(cropText, textPos)
+
+
+    def getCrops(self, farmGroup):
+        if isinstance(farmGroup, FarmGroup):  # Ensure farmGroup is a valid instance
+            self.carryingCrops = True
+            self.crops += farmGroup.cropCount
+            farmGroup.cropCount = 0  # Reset the farm's crop count
+        else:
+            print("Invalid farm group provided.")   
+
+    def isAtCookhouse(self, cookhouse):
+        # Calculate the distance between the farmer and the cookhouse
+        cookhouseX = cookhouse.position[0] + 20 // 2
+        cookhouseY = cookhouse.position[1] + 20 // 2
+        xDiff = abs(self.position[0] - cookhouseX)
+        yDiff = abs(self.position[1] - cookhouseY)
+
+        # Check if the farmer is within 20 pixels of the cookhouse
+        return xDiff <= 15 and yDiff <= 15
+    
+    def isAtPlace(self, item):
+        itemX = item.position[0] + 20 // 2
+        itemY = item.position[1] + 20 // 2
+        xDiff = abs(self.position[0] - itemX)
+        yDiff = abs(self.position[1] - itemY)
+        
+        # Check if the farmer is within 20 pixels of the item
+        return xDiff <= 15 and yDiff <= 15
+    
+    def dropCrops(self, cookhouse):
+        if self.carryingCrops and isinstance(cookhouse, Cookhouse):
+            self.carryingCrops = False
+            cookhouse.crops += self.crops
+            self.crops = 0
+        else:
+            print("Invalid cookhouse provided.")
+        
+    def getFood(self, cookhouse):
+        if isinstance(cookhouse, Cookhouse):
+            self.carryingFood = True
+            self.crops += cookhouse.crops
+            cookhouse.crops = 0
+    
+    def dropFood(self, restaurant):
+        if self.carryingFood and isinstance(restaurant, Restaurant):
+            self.carryingFood = False
+            restaurant.food += self.crops
+            self.crops = 0
+        else:
+            print("Invalid restaurant provided.")
+
+import pygame
+
+class Path(pygame.sprite.Sprite):
+    def __init__(self, position):
+        super().__init__()
+        self.image = pygame.Surface((20, 20))
+        self.image.fill((100, 100, 100))  # Gray color for roads
+        self.rect = self.image.get_rect(topleft=position)
+        self.position = position
+        self.cost = 20  # Gold cost to place a road
+        self.label = "Path"
+
+    def draw(self, screen, cameraX, cameraY):
+        screen.blit(self.image, (self.rect.x + cameraX, self.rect.y + cameraY))
+
+class Land(pygame.sprite.Sprite):
+    def __init__(self, position):
+        super().__init__()
+        self.image = pygame.Surface((20, 20))
+        self.image.fill((34, 139, 34))  # Green color for land
+        self.rect = self.image.get_rect(topleft=position)
+        self.position = position
+        self.cost = 10  # Gold cost to place land
+        self.label = "Land"
+
+    def draw(self, screen, cameraX, cameraY):
+        screen.blit(self.image, (self.rect.x + cameraX, self.rect.y + cameraY))
+
+import pygame
+from buildings import Building
+
+class Tent(Building):
+    def __init__(self, position):
+        super().__init__(position)
+        self.image = pygame.image.load(r"C:\Users\Study\PycharmProjects\NEA Images\pixel-art-camp-tent-picnic_150088-1055.jpg")
+        self.image = pygame.transform.scale(self.image, (20, 20))
+        self.rect = self.image.get_rect(topleft=position)
+        self.label = "Tent"
+        self.visibleUpgradeBox = True
+        self.sleepPoints = 0
+
+    def upgradeBoxClicked(self, mousePos, gold):
+        if self.visibleUpgradeBox:
+            upgradeBoxRect = pygame.Rect(self.rect.x - 25, self.rect.y - 30, 200, 25)
+            if upgradeBoxRect.collidepoint(mousePos) and gold >= self.upgradeCost:
+                self.sleepPoints += 10
+                gold -= self.upgradeCost
+                self.upgradeCost += 100
+        return gold
+
+    def update(self):
+        pass
+
+import pygame
+import time
+from buildings import Building
+
+class WatchTower(Building):
+    def __init__(self, position):
+        super().__init__(position)
+        self.image = pygame.image.load(r"C:\Users\Study\Pirate Tycoon\images\watchTower.png")
+        self.image = pygame.transform.scale(self.image, (20, 20))
+        self.rect = self.image.get_rect(topleft=position)
+        self.label = "WatchTower"
+        self.lastAttackTime = 0
+        self.attackCooldown = 1
+        self.range = 100
+        self.damage = 10
+        self.enemy = None
+        self.cannonBalls = []
+    
+    def findClosestEnemy(self, enemyPirates):
+        if not self.enemy:
+            for enemy in enemyPirates:
+                distanceX = self.rect.x - enemy.rect.x
+                distanceY = self.rect.y - enemy.rect.y
+                distance = (distanceX ** 2 + distanceY ** 2) ** 0.5
+                if distance <= self.range:
+                    self.enemy = enemy
+                    break
+        else:
+            distanceX = self.rect.x - self.enemy.rect.x
+            distanceY = self.rect.y - self.enemy.rect.y
+            distance = (distanceX ** 2 + distanceY ** 2) ** 0.5
+            if distance > self.range:
+                self.enemy = None
+
+    def shoot(self):
+        distanceX = self.rect.x - self.enemy.rect.x
+        distanceY = self.rect.y - self.enemy.rect.y
+        distance = (distanceX ** 2 + distanceY ** 2) ** 0.5
+        if distance <= self.range:
+            currentTime = time.time()
+            if currentTime - self.lastAttackTime > self.attackCooldown:
+                self.lastAttackTime = currentTime
+                self.enemy.showHealthBar = True
+                self.enemy.healthBarStartTime = time.time()
+                self.cannonBalls.append({'pos': pygame.math.Vector2(self.rect.center),
+                        'target': pygame.math.Vector2(self.enemy.rect.center),
+                        'speed': 5
+                    })
+                self.enemy.health -= self.damage
+                if self.enemy.health <= 0:
+                    self.enemy = None
+
+    def drawCannonBalls(self, screen, cameraX, cameraY):
+        for cannonball in self.cannonBalls[:]:
+            direction = (cannonball['target'] - cannonball['pos']).normalize()
+            cannonball['pos'] += direction * cannonball['speed']
+
+            # Draw the cannonball
+            pygame.draw.circle(screen, (0, 0, 0), (int(cannonball['pos'].x) + cameraX, int(cannonball['pos'].y) + cameraY), 5)
+
+            # Check if the cannonball has reached the target
+            if cannonball['pos'].distance_to(cannonball['target']) < cannonball['speed']:
+                self.enemy.health -= self.damage
+                if self.enemy.health <= 0:
+                    self.enemy = None
+                self.cannonBalls.remove(cannonball)
+
+
+#Game Settings
+pygame.init()
+screenWidth = 800
+screenHeight = 600
+fps = 100
+timer = pygame.time.Clock()
+zoomLevel = 1.0
+minZoom = 0.01
+maxZoom = 2.0
+zoomStep = 0.1
+gridSize = 20
+
+islandWidth = 600   #1600
+islandHeight = 600  #1200
+noiseScale = 100
+seed = random.randint(0, 1000)
+# Initialise Perlin noise generator
+noise1 = PerlinNoise(octaves=4, seed=seed)
+noise2 = PerlinNoise(octaves=8, seed=seed + 1)
+islandSurface = pygame.Surface((islandWidth, islandHeight))
+
+#island.fill((0, 100, 0))
+cameraX, cameraY = 0, 0
+speed = 5
+battleMode = False
+bullets_group = pygame.sprite.Group()  # Group to manage bullets
+playerBullets = pygame.sprite.Group()
+enemyBullets = pygame.sprite.Group()
+
+#speed settings
+slow = 60
+medium = 45
+fast = 30
+
+#stats button
+buttonRect = pygame.Rect(200, 10, 60, 40)  # Button position and size (x, y, width, height)
+showStatsMenu = False  # Track if the stats menu should be displayed
+
+dayLength = slow
+speedMultipliers = { slow: 1.0, medium: 1.5, fast: 2.0} 
+speedMultiplier = speedMultipliers[dayLength]
+speedLabels = { slow: "Slow", medium: "Medium", fast: "Fast" }
+# Speed settings positions
+speedButtons = {
+    "Slow": pygame.Rect(700, 10, 80, 30),
+    "Medium": pygame.Rect(700, 50, 80, 30),
+    "Fast": pygame.Rect(700, 90, 80, 30),
+}
+
+lastAttackCheck = time.time()
+
+#monthly stats
+profitLog = {}
+currentMonthIncome = 0
+currentMonthExpenses = 0
+currentMonthProfit = 0
+
+#date/time
+currentDate = datetime(1500, 1, 2)
+dayStartTime = time.time()
+
+screen = pygame.display.set_mode((screenWidth, screenHeight))
+pygame.display.set_caption("Pirate Tycoon")
+
+#colours
+Blue = (0, 0, 255)
+Green = (34, 139, 34)
+White = (255, 255, 255)
+Brown = (139, 69, 19)
+Red = (255, 0, 0)
+black = (0, 0, 0)
+white = (255, 255, 255)
+grey = (128, 128, 128)
+
+#Game Variables
+gold = 1000
+population = 0
+noOfItems = 0
+placedItems = []
+floatingTexts = []
+dockBoats = []
+farmGroups = []
+pathGrid = {}
+selectedItem = None
+isDock = None
+playerBoatSpawned = False
+dockWidth, dockHeight = 100, 50
+entranceDock = (islandWidth // 2 - dockWidth // 2, 0)
+
+boat = Boat([800, -1100], "none")  # Create a boat starting from the ocean
+boatAndPirate = [(boat, None)]
+
+#enemies and enemy ships
+enemyShips = pygame.sprite.Group()
+enemyPirates = pygame.sprite.Group()
+enemyAttack = False
+enemiesArriving = True
+shipAdded = False
+piratesSpawned = False
+piratesDefeated = True
+piratesOnIsland = False
+
+#fonts
+font = pygame.font.SysFont(None, 36)
+dockFont = pygame.font.SysFont(None, 20)
+populationFont = pygame.font.SysFont(None, 36)
+
+#create menu
+menuHeight = 100
+menuPrices = {"small": 100, "medium": 500, "large": 700, "tent": 200, "restaurant": 500, "farm": 50, 'cookhouse': 100, 'path': 10,
+              "farmer": 100, "watchTower": 200, "land": 100}
+menuItems = [
+    {"item": 'small', "rect": pygame.Rect(10, screenHeight - menuHeight + 10, 40, 40), "dock": True},
+    {"item": 'medium',"rect": pygame.Rect(70, screenHeight - menuHeight + 10, 40, 40), "dock": True},
+    {"item": 'large', "rect": pygame.Rect(140, screenHeight - menuHeight + 10, 40, 40), "dock": True},
+    {"item": 'tent',"rect": pygame.Rect(210, screenHeight - menuHeight + 10, 40, 40), "dock": False },
+    {"item": 'restaurant', "rect": pygame.Rect(280, screenHeight - menuHeight + 10, 40, 40), "dock": False },
+    {"item": 'farm', "rect": pygame.Rect(350, screenHeight - menuHeight + 10, 40, 40), "dock": False },
+    {"item": 'cookhouse', "rect": pygame.Rect(420, screenHeight - menuHeight + 10, 40, 40), "dock": False },
+    {"item": 'path', "rect": pygame.Rect(490, screenHeight - menuHeight + 10, 40, 40), "dock": False },
+    {"item": 'farmer', "rect": pygame.Rect(560, screenHeight - menuHeight + 10, 40, 40), "dock": False },
+    {"item": 'watchTower', "rect": pygame.Rect(630, screenHeight - menuHeight + 10, 40, 40), "dock": False },  
+    {"item": 'land', "rect": pygame.Rect(700, screenHeight - menuHeight + 10, 40, 40), "dock": False },
+]
+
+
+def updateExpenses(amount):
+    global currentMonthExpenses
+    currentMonthExpenses += amount
+
+def updateIncome(amount):
+    global currentMonthIncome
+    currentMonthIncome += amount
+
+def updateDateAndProfit():
+    global currentDate, currentMonthIncome, currentMonthExpenses, currentMonthProfit, profitLog
+    currentMonthProfit = currentMonthIncome - currentMonthExpenses
+
+    # Create the key for the current month
+    currentMonthKey = f"{currentDate.year}-{currentDate.month:02d}"
+
+    # Initialize the month's profit list if not already present
+    if currentMonthKey not in profitLog:
+        profitLog[currentMonthKey] = {
+            "income": 0,  # Start with 0 income for the current month
+            "expenses": 0,  # Start with 0 expenses for the current month
+            "profit": [],
+        }
+
+    # Add today's profit to the daily profit list
+    if currentDate.day - 1 < len(profitLog[currentMonthKey]["profit"]):
+        # If the day already exists in the list, update it
+        profitLog[currentMonthKey]["profit"][currentDate.day - 1] = currentMonthProfit
+    else:
+        # Append today's profit if it's a new entry
+        profitLog[currentMonthKey]["profit"].append(currentMonthProfit)
+
+    # Update income and expenses for the current day
+    profitLog[currentMonthKey]["income"] = currentMonthIncome
+    profitLog[currentMonthKey]["expenses"] = currentMonthExpenses
+
+    # Check if it's the start of a new month
+    if currentDate.day == 1:  # Assuming the start of a new month
+        # Determine the previous month and year
+        previousMonth = currentDate.month - 1
+        year = currentDate.year
+        if previousMonth == 0:  # If current month is January, go to December of the previous year
+            previousMonth = 12
+            year -= 1
+
+        # Generate the key for the previous month
+        previousMonthKey = f"{year}-{previousMonth:02d}"
+
+        # Ensure data exists for the previous month in the log
+        if previousMonthKey in profitLog:
+            # Calculate total profit for the previous month
+            profitLog[previousMonthKey]["income"] = profitLog[previousMonthKey]["income"]
+            profitLog[previousMonthKey]["expenses"] = profitLog[previousMonthKey]["expenses"]
+            profitLog[previousMonthKey]["profit"] = profitLog[previousMonthKey]["profit"]
+
+        else:
+            # Handle case where previous month's data is missing
+            profitLog[previousMonthKey] = {
+                "income": 0,
+                "expenses": 0,
+                "profit": []
+            }
+
+        # Reset data for the new month
+        currentMonthIncome = 0
+        currentMonthExpenses = 0
+        currentMonthProfit = 0
+
+
+def handleMenuClicks(mouseX, mouseY, adjustedMouseX, adjustedMouseY, gold, noOfItems, selectedItem, menuItems, isDock, islandWidth, islandHeight, gridSize, dockBoats, landPositions):
+    # Check if the mouse is clicked on a menu item
+    for label, rect in speedButtons.items():
+        if rect.collidepoint(mouseX, mouseY):
+            return gold, placedItems, selectedItem, isDock, noOfItems, landPositions  # Skip item placement if inside speed button
+        
+    for item in menuItems:
+        if item["rect"].collidepoint(mouseX, mouseY):
+            selectedItem = item["item"]
+            isDock = item["dock"]
+            break
+    if selectedItem and mouseY < 500:
+        gridPosition = (adjustedMouseX // gridSize * gridSize, adjustedMouseY // gridSize * gridSize)
+
+        if any(item["pos"] == gridPosition for item in placedItems):
+            if selectedItem == 'land' and any(item["orientation"] == "land" for item in placedItems if item["pos"] == gridPosition):
+                # Prevent placing land on top of land
+                floatingTexts.append({
+                    "text": "Position occupied!",
+                    "x": adjustedMouseX,
+                    "y": adjustedMouseY,
+                    "expiration": time.time() + 1
+                })
+                return gold, placedItems, selectedItem, isDock, noOfItems, landPositions
+
+            elif selectedItem != "farmer" and any(item["orientation"] != "land" for item in placedItems if item["pos"] == gridPosition):
+                # Prevent placing objects on objects (except land)
+                floatingTexts.append({
+                    "text": "Position occupied!",
+                    "x": adjustedMouseX,
+                    "y": adjustedMouseY,
+                    "expiration": time.time() + 1
+                })
+                return gold, placedItems, selectedItem, isDock, noOfItems, landPositions
+        
+        if selectedItem == 'farmer':  # Farmer-specific placement logic
+            if gridPosition not in pathGrid or not pathGrid.get(gridPosition, False):
+                floatingTexts.append({
+                    "text": "Farmers must be placed on paths!",
+                    "x": adjustedMouseX,
+                    "y": adjustedMouseY,
+                    "expiration": time.time() + 1
+                })
+                return gold, placedItems, selectedItem, isDock, noOfItems, landPositions
+        
+        if gold >= menuPrices[selectedItem] and selectedItem == "land" and gridPosition not in landPositions:
+            currentTime = time.time()
+            landPositions.append((adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize))
+            SelectedItem = Land([adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize])
+            gold -= menuPrices[selectedItem]
+            placedItems.append(
+                {"item": SelectedItem, "pos": (adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize), "orientation": "land"})
+            floatingTexts.append({"text": f"-{menuPrices[selectedItem]}$", "x": adjustedMouseX, "y": adjustedMouseY, "expiration": currentTime + 1})
+            return gold, placedItems, selectedItem, isDock, noOfItems, landPositions
+        
+        else:
+            if gold >= menuPrices[selectedItem]:
+                currentTime = time.time()
+                if isDock:
+                    if (gridPosition[0] - 20, gridPosition[1]) not in landPositions and gridPosition in landPositions: 
+                        dock = Dock(selectedItem, [adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize], "left")
+                        dockBoats.append( (Boat( [adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize], "left" ), dock))
+                        placedItems.append(
+                            {"item": dock, "pos": (adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize), "orientation": "left"})
+                        floatingTexts.append({"text": f"-{menuPrices[selectedItem]}$", "x": adjustedMouseX, "y": adjustedMouseY, "expiration": currentTime + 1})
+                        gold -= menuPrices[selectedItem]
+                        noOfItems += 1
+                        updateExpenses(menuPrices[selectedItem])
+                        
+                    elif (gridPosition[0] + 20, gridPosition[1]) not in landPositions and gridPosition in landPositions:
+                        dock = Dock(selectedItem, [adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize], "right")
+                        dockBoats.append( (Boat( [adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize], "right" ), dock))
+                        placedItems.append(
+                            {"item": dock, "pos": (adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize),
+                            "orientation": "right"})
+                        floatingTexts.append({"text": f"-{menuPrices[selectedItem]}$", "x": adjustedMouseX, "y": adjustedMouseY, "expiration": currentTime + 1})
+                        gold -= menuPrices[selectedItem]
+                        noOfItems += 1
+                        updateExpenses(menuPrices[selectedItem])
+                        
+                    elif (gridPosition[0], gridPosition[1] - 20) not in landPositions and gridPosition in landPositions:
+                        dock = Dock(selectedItem, [adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize], "top")
+                        dockBoats.append(( Boat( [adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize], "top" ), dock))
+                        placedItems.append(
+                            {"item": dock, "pos": (adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize),
+                            "orientation": "top"})
+                        floatingTexts.append({"text": f"-{menuPrices[selectedItem]}$", "x": adjustedMouseX, "y": adjustedMouseY, "expiration": currentTime + 1})
+                        gold -= menuPrices[selectedItem]
+                        noOfItems += 1
+                        updateExpenses(menuPrices[selectedItem])
+                        
+                    elif (gridPosition[0], gridPosition[1] + 20) not in landPositions and gridPosition in landPositions:
+                        dock = Dock(selectedItem, [adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize], "bottom")
+                        dockBoats.append( (Boat( [adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize], "bottom" ), dock))
+                        placedItems.append({"item": dock, "pos": (adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize), "orientation": "bottom"})
+                        floatingTexts.append({"text": f"-{menuPrices[selectedItem]}$", "x": adjustedMouseX, "y": adjustedMouseY, "expiration": currentTime + 1})
+                        gold -= menuPrices[selectedItem]
+                        noOfItems += 1
+                        updateExpenses(menuPrices[selectedItem])
+                else:
+                    if gridPosition in landPositions and selectedItem != "land":
+                        gold -= menuPrices[selectedItem]
+                        updateExpenses(menuPrices[selectedItem])
+                        if selectedItem == 'tent':
+                            SelectedItem = Tent([adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize])
+                            noOfItems += 1
+                        if selectedItem == 'restaurant':
+                            SelectedItem = Restaurant([adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize])
+                            noOfItems += 1
+                        if selectedItem == 'farm':
+                            SelectedItem = Farm([adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize])
+                            groupFarms(SelectedItem, farmGroups)
+                        if selectedItem == 'cookhouse':
+                            SelectedItem = Cookhouse([adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize])
+                        if selectedItem == 'path':
+                            SelectedItem = Path([adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize])
+                            for i in range(SelectedItem.rect.x, SelectedItem.rect.x + 21):
+                                    for j in range(SelectedItem.rect.y,SelectedItem.rect.y + 21):
+                                        pathGrid[(i, j)] = True
+                            for i in range(SelectedItem.rect.y, SelectedItem.rect.y + 21):
+                                for j in range(SelectedItem.rect.x, SelectedItem.rect.x+ 21):
+                                    pathGrid[(j, i)] = True
+                        if selectedItem == 'farmer':
+                            gridX = adjustedMouseX // gridSize * gridSize
+                            gridY = adjustedMouseY // gridSize * gridSize
+                            centerX = gridX + gridSize // 2
+                            centerY = gridY + gridSize // 2
+                            SelectedItem = Farmer([centerX, centerY])
+                            SelectedItem.assignFarmerRole(pathGrid, placedItems)
+                        if selectedItem == 'watchTower':
+                            SelectedItem = WatchTower([adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize])
+                        placedItems.append(
+                            {"item": SelectedItem, "pos": (adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize), "orientation": "normal"})
+                        floatingTexts.append({"text": f"-{menuPrices[selectedItem]}$", "x": adjustedMouseX, "y": adjustedMouseY, "expiration": currentTime + 1})
+    return gold, placedItems, selectedItem, isDock, noOfItems, landPositions
+
+def drawStatsButton():
+    # Draw the button
+    pygame.draw.rect(screen, (200, 0, 0), buttonRect)  # Red button
+    font = pygame.font.Font(None, 24)
+    button_text = font.render("Stats", True, (255, 255, 255))
+    screen.blit(button_text, (buttonRect.x + 10, buttonRect.y + 10))
+
+def ToggleStatsDisplay(mouseX, mouseY, showStatsMenu):
+    if buttonRect.collidepoint(mouseX, mouseY):
+            showStatsMenu = not showStatsMenu  # Toggle the stats menu
+    return showStatsMenu
+
+def drawStatsDisplay(showStatsMenu, profitLog, currentMonthIncome, currentMonthExpenses, currentMonthProfit, currentDate):
+    if showStatsMenu:
+        statsMenuRect = pygame.Rect(100, 50, 600, 400)
+        pygame.draw.rect(screen, (0, 0, 0), statsMenuRect)  # Black box
+        pygame.draw.rect(screen, (255, 255, 255), statsMenuRect, 2)  # White border
+
+        # Fonts and colors
+        font = pygame.font.Font(None, 36)
+        white = (255, 255, 255)
+        gray = (200, 200, 200)
+        green = (0, 255, 0)
+
+        # Calculate the previous month and year
+        previousMonth = currentDate.month - 1
+        year = currentDate.year
+        if previousMonth == 0:  # If the current month is January
+            previousMonth = 12
+            year -= 1
+
+        # Previous month stats
+        monthKey = f"{year}-{previousMonth:02d}"
+        previousStats = profitLog.get(monthKey, {"income": 0, "expenses": 0, "profit": [0] * 30})
+        prevIncome = previousStats.get("income", 0)
+        prevExpenses = previousStats.get("expenses", 0)
+        previousProfitHistory = previousStats.get("profit", [0] * 30)
+        previousProfit = previousProfitHistory[-1] if previousProfitHistory else 0
+
+        # Current month stats
+        currentMonthKey = f"{currentDate.year}-{currentDate.month:02d}"
+        currentStats = profitLog.get(currentMonthKey, {"profit": [0] * 30})
+        currentProfitHistory = currentStats.get("profit", [0] * 30)
+
+        # Display headers
+        headerText = font.render("Monthly Stats", True, white)
+        screen.blit(headerText, (statsMenuRect.x + 200, statsMenuRect.y + 10))
+
+        # Left side: Previous month
+        prevHeaderText = font.render("Previous Month", True, white)
+        screen.blit(prevHeaderText, (statsMenuRect.x + 50, statsMenuRect.y + 50))
+        prevIncomeText = font.render(f"Income: {prevIncome}", True, white)
+        screen.blit(prevIncomeText, (statsMenuRect.x + 50, statsMenuRect.y + 100))
+        prevExpensesText = font.render(f"Expenses: {prevExpenses}", True, white)
+        screen.blit(prevExpensesText, (statsMenuRect.x + 50, statsMenuRect.y + 150))
+        prevProfitText = font.render(f"Profit: {previousProfit}", True, white)
+        screen.blit(prevProfitText, (statsMenuRect.x + 50, statsMenuRect.y + 200))
+
+        # Right side: Current month
+        currHeaderText = font.render("Current Month", True, white)
+        screen.blit(currHeaderText, (statsMenuRect.x + 350, statsMenuRect.y + 50))
+        currIncomeText = font.render(f"Income: {currentMonthIncome}", True, white)
+        screen.blit(currIncomeText, (statsMenuRect.x + 350, statsMenuRect.y + 100))
+        currExpensesText = font.render(f"Expenses: {currentMonthExpenses}", True, white)
+        screen.blit(currExpensesText, (statsMenuRect.x + 350, statsMenuRect.y + 150))
+        currProfitText = font.render(f"Profit: {currentMonthProfit}", True, white)
+        screen.blit(currProfitText, (statsMenuRect.x + 350, statsMenuRect.y + 200))
+
+        # Draw graphs
+        graphWidth = 250
+        graphHeight = 150
+        graphX = statsMenuRect.x + 50
+        graphY = statsMenuRect.y + 250
+
+        def drawGraph(profitHistory, x, y, width, height, label):
+            pygame.draw.rect(screen, gray, (x, y, width, height), 2)  # Graph border
+            if len(profitHistory) > 1:
+                maxProfit = max(max(profitHistory), 1)  # Avoid division by zero
+                minProfit = min(min(profitHistory), 0)
+                profitRange = maxProfit - minProfit or 1
+                points = []
+                for i, profit in enumerate(profitHistory):
+                    px = x + int(i / (len(profitHistory) - 1) * (width - 10)) + 5
+                    py = y + height - int((profit - minProfit) / profitRange * (height - 10)) - 5
+                    points.append((px, py))
+                pygame.draw.lines(screen, green, False, points, 2)
+
+            labelText = font.render(label, True, white)
+            screen.blit(labelText, (x + 10, y - 30))
+
+        drawGraph(previousProfitHistory, graphX, graphY, graphWidth, graphHeight, "Prev Month Profit")
+        drawGraph(currentProfitHistory, graphX + 300, graphY, graphWidth, graphHeight, "Curr Month Profit")
+
+def displayTimeSpeedSettings():
+    for label, rect in speedButtons.items():
+        # Draw button background
+        pygame.draw.rect(screen, Green if speedLabels[dayLength] == label else Brown, rect)
+        # Render the text
+        textSurface = font.render(label, True, White)
+        textRect = textSurface.get_rect(center=rect.center)
+        screen.blit(textSurface, textRect)
+
+def handleSpeedButtonClick(mouseX, mouseY):
+    global dayLength
+    global speedMultiplier
+    global speedMultipliers
+    for label, rect in speedButtons.items():
+        if rect.collidepoint(mouseX, mouseY):
+            # Update the timespeed based on the clicked button
+            if label == "Slow":
+                dayLength = slow
+                speedMultiplier = speedMultipliers[dayLength]
+            elif label == "Medium":
+                dayLength = medium
+                speedMultiplier = speedMultipliers[dayLength]
+            elif label == "Fast":
+                dayLength = fast
+                speedMultiplier = speedMultipliers[dayLength]
+            break
+
+def updateDate():
+    global currentDate, dayStartTime
+    currentTime = time.time()
+    elapsedTime = currentTime - dayStartTime
+
+    if elapsedTime >= dayLength:
+        currentDate += timedelta(days=1)
+        dayStartTime = currentTime
+
+def displayDate(screen, font):
+    dateText = currentDate.strftime("%B %d, %Y")
+    dateSurface = font.render(dateText, True, White)
+    screen.blit(dateSurface, (300, 10))
+
+def showFloatingTexts(screen, floatingTexts, cameraX, cameraY, font):
+    currentTime = time.time()   
+    for text in floatingTexts[:]:  # Iterate over a copy
+        if text["expiration"] > currentTime:
+            textSurface = font.render(text["text"], True, Red)
+            screen.blit(textSurface, (text["x"] + cameraX, text["y"] + cameraY))
+        else:
+            floatingTexts.remove(text)  # Remove expired texts
+
+def updateSpeeds(boatAndPirate, placedItems, speedMultiplier):
+    for boat,pirate in boatAndPirate:
+        if pirate is not None:
+            pirate.speed =  pirate.baseSpeed * speedMultiplier 
+        boat.speed = boat.baseSpeed * speedMultiplier
+    for farmer in placedItems:
+        if isinstance(farmer["item"], Farmer):
+            farmer = farmer["item"]
+            farmer.speed = farmer.baseSpeed * speedMultiplier
+        
+    
+def cameraMovement(keys, cameraX, cameraY, speed):
+    if keys[pygame.K_LEFT]:
+        cameraX += speed
+    if keys[pygame.K_RIGHT]:
+        cameraX -= speed
+    if keys[pygame.K_UP]:
+        cameraY += speed
+    if keys[pygame.K_DOWN]:
+        cameraY -= speed
+    return cameraX, cameraY
+
+def drawPlacedItems(placedItems, cameraX, cameraY, zoomLevel):
+    for item in placedItems:
+        dock = item["item"] if isinstance(item["item"], Dock) else None
+        x, y = item["pos"]
+        orientation = item["orientation"]
+
+        scaledX = x * zoomLevel
+        scaledY = y * zoomLevel
+
+        if dock:
+            drawDock(cameraX, cameraY, dock, orientation, scaledX, scaledY, zoomLevel, item)
+        else:
+            if isinstance(item["item"], Farmer):
+                pass
+            else:
+                object = item["item"]
+                if isinstance(object, Path) or isinstance(object, Land):
+                    pass
+                else:
+                    if object.health <= 0:
+                        placedItems.remove(item)
+                object.draw(screen, cameraX, cameraY)       
+
+def drawDock(cameraX, cameraY, dock, orientation, scaledX, scaledY, zoomLevel, item):
+    object = item["item"]
+
+    # Scale dock image based on zoom 
+    scaledImage = pygame.transform.scale(object.image,
+                                         (int(object.image.get_width() * zoomLevel),
+                                          int(object.image.get_height() * zoomLevel)))
+  
+    # Adjust position of rotated image based on zoom
+    rotatedRect = scaledImage.get_rect(topleft=(scaledX + cameraX, scaledY + cameraY))
+    screen.blit(scaledImage, rotatedRect)
+
+    scaledFontSize = int(20 * zoomLevel)
+    dynamicFont = pygame.font.SysFont(None, scaledFontSize)
+
+    dockLabel = dynamicFont.render(dock.size.capitalize(), True, White)
+    labelRect = dockLabel.get_rect(center=rotatedRect.center)
+    screen.blit(dockLabel, labelRect)
+
+def generateGoldAtDock(placedItems, gold, cameraX, cameraY, floatingTexts, screen, speedMultiplier):
+    currentTime = time.time()
+    for item in placedItems:
+        dock = item["item"] if isinstance(item["item"], Dock) else None
+        if dock:
+            if dock.isTimeForReturn(speedMultiplier):
+                gold += dock.goldRate
+                updateIncome(dock.goldRate)
+                dockX, dockY = item["pos"]
+                floatingTexts.append({
+                    "text": f"+{dock.goldRate}$",
+                    "x": dockX,
+                    "y": dockY - 20,
+                    "expiration": (currentTime + 0.5)  # 3 seconds from now
+                })
+        # Render floating texts
+        for text in floatingTexts[:]:  # Iterate over a copy to safely modify the list
+            if text["expiration"] > currentTime:
+                textSurface = font.render(text["text"], True, (255, 255, 0))
+                screen.blit(textSurface, (text["x"] + cameraX , text["y"] + cameraY))
+            else:
+                floatingTexts.remove(text)  # Remove expired messages
+    return gold
+
+def drawBoats(screen, cameraX, cameraY):
+    for boat, dock in dockBoats:
+        boat.draw(screen, cameraX, cameraY)
+    
+    for boat in enemyShips:
+        boat.draw(screen, cameraX, cameraY)
+
+def boatsAtDock(dockBoats, clock):
+    fps = clock.get_fps()
+
+    for boat, dock in dockBoats:
+        if boat.dockType == "left":
+            targetPos = (dock.position[0] - 1000, dock.position[1])
+            originalPos = (dock.position[0], dock.position[1])
+        elif boat.dockType == "right":
+            targetPos = (dock.position[0] + 1000, dock.position[1])
+            originalPos = (dock.position[0], dock.position[1])
+        elif boat.dockType == "bottom":
+            targetPos = (dock.position[0], dock.position[1] + 1000)
+            originalPos = (dock.position[0], dock.position[1])
+        elif boat.dockType == "top":
+            targetPos = (dock.position[0], dock.position[1] - 1000) 
+            originalPos = (dock.position[0], dock.position[1])
+
+            if not boat.speedSet:
+                distance = 1000 * 2
+        if not boat.speedSet:
+            distance = 1000 * 2  # total round-trip distance (to and from the target)
+            boat.speed = (distance / (dock.returnFrequency*100))   # speed to complete the round trip in the returnFrequency time 
+            boat.speedSet = True
+        
+        # Check current movement direction
+        if not boat.returning:
+            if not boat.isAtTarget(targetPos):
+                boat.moveTowards(targetPos)
+            else:
+                # Switch to returning mode when target is reached
+                boat.returning = True
+                boat.active = True  
+        # If the boat is returning to the original position
+        if boat.returning:
+            if not boat.isAtTarget(originalPos):
+                boat.moveTowards(originalPos)
+            else:
+                # Reset to move towards the target position again
+                boat.returning = False
+                boat.active = True  # Ensure active for the next journey
+
+def drawMenuItems(menuItems):
+    pygame.draw.rect(screen, (200, 200, 200), (0, screenHeight - menuHeight, screenWidth, menuHeight))
+    for item in menuItems:
+        pygame.draw.rect(screen, Brown, item["rect"])
+        menuLabel = dockFont.render(item["item"].capitalize(), True, White)
+        menuLabelRect = menuLabel.get_rect(center=(item["rect"].centerx, item["rect"].top - 10))
+        screen.blit(menuLabel, menuLabelRect)
+        priceLabel = dockFont.render(f"${menuPrices[item['item']]}", True, White)
+        priceLabelRect = priceLabel.get_rect(center=(item["rect"].centerx, item["rect"].top + 10))
+        screen.blit(priceLabel, priceLabelRect)
+
+def drawStats(gold, population, White):
+    # Display gold
+    goldText = font.render(f"Gold: {gold}", True, White)
+    screen.blit(goldText, (10, 10))
+
+    # Display population count
+    populationText = populationFont.render(f"Population: {population}", True, White)
+    screen.blit(populationText, (10, 50))  # Adjust y-position as needed
+
+    enemiesText = font.render(f"Enemies: {len(enemyPirates)}", True, White)
+    screen.blit(enemiesText, (10, 90))
+
+def drawIsland(cameraX, cameraY, dockWidth, dockHeight, White):
+    # Scale island surface based on zoom level
+    scaledIsland = pygame.transform.scale(island,(int(islandWidth * zoomLevel), int(islandHeight * zoomLevel)))
+
+    # Draw ocean and island
+    screen.fill(Blue)
+    screen.blit(scaledIsland, (cameraX, cameraY))
+
+    # Draw the entrance dock at the top
+    entranceDockX = entranceDock[0] * zoomLevel + cameraX
+    entranceDockY = entranceDock[1] * zoomLevel + cameraY
+    pygame.draw.rect(screen, Brown,
+                     pygame.Rect(entranceDockX, entranceDockY, dockWidth * zoomLevel, dockHeight * zoomLevel))
+    entranceLabel = dockFont.render("Entrance", True, White)
+    labelRect = entranceLabel.get_rect(
+        center=(entranceDockX + (dockWidth * zoomLevel) / 2, entranceDockY + (dockHeight * zoomLevel) / 2))
+    screen.blit(entranceLabel, labelRect)
+
+
+def spawnBoat(noOfItems, boatAndPirate, population, cameraX, cameraY, enemiesArriving, enemyAttack, piratesSpawned):
+    if noOfItems > 4:
+        newBoat = Boat([800, -1100], "none")
+        boatAndPirate.append((newBoat, None))
+        noOfItems = 0
+
+      # Move the boat towards the entrance dock
+    for i, (boat, pirate) in enumerate(boatAndPirate):
+        boat.updateSpeed(speedMultiplier)
+        boat.moveTowards((800, 20))
+        if boat.active:
+            boat.draw(screen, cameraX, cameraY)
+
+        # Spawn the pirate only when the boat is no longer active
+        if not boat.active and pirate is None: 
+            newPirate = Pirate((810,30), 0)
+            newPirate.active = True
+            newPirate.hunger = 100
+            newPirate.sleep = 100
+            boatAndPirate[i] = (boat, newPirate)  # Update tuple with the new pirate
+            population += 1
+
+        if boat.active:
+            boatRect = (boat.position[0] + cameraX, boat.position[1] + cameraY, 30, 10)
+            pygame.draw.rect(screen, Red, boatRect)
+
+    if enemyAttack:
+        for boat in enemyShips:
+            boat.updateSpeed(speedMultiplier)
+            boat.moveTowards((800, 760))
+            if boat.active:
+                boat.draw(screen, cameraX, cameraY)
+                boatRect = (boat.position[0] + cameraX, boat.position[1] + cameraY, 30, 10)
+                pygame.draw.rect(screen, Red, boatRect)
+            else:
+                enemyShips.remove(boat)
+                piratesSpawned = True
+
+    return noOfItems, boatAndPirate, population, enemiesArriving, enemyAttack, piratesSpawned
+
+def findClosestObject(placedItems, pirate):
+    closestObjectLocation = None
+    objectType = ""
+    minDistance = 200
+    object = None
+    for item in placedItems:
+        if not isinstance(item["item"], Dock) and not isinstance(item["item"], Farmer) and not isinstance(item["item"], Path) and not isinstance(item["item"], Farm) and not isinstance(item["item"], Cookhouse):
+            itemX, itemY = item["pos"]
+            distance = ((pirate.position[0] - itemX) ** 2 + (pirate.position[1] - itemY) ** 2) ** 0.5
+            # Check if the tent is within the 200-pixel range
+            if distance < minDistance:
+                minDistance = distance
+                closestObjectLocation = (itemX, itemY)
+                if item["item"].label == "Tent":
+                    object = item["item"]
+                    objectType = item["item"].label
+                elif item["item"].label == "Restaurant":
+                    object = item["item"]
+                    objectType = item["item"].label
+    return closestObjectLocation, objectType, boatAndPirate, object
+
+def findNearestItem():
+    pass
+
+def piratePayment(pirate, gold,speedMultiplier, landPositions):
+    currentTime = time.time()
+    payment = pirate.update(speedMultiplier, placedItems, landPositions)
+    if payment > 0:
+        gold += payment
+        updateIncome(payment)
+        floatingTexts.append({"text": f"+ {payment}$", "x": pirate.position[0], "y": pirate.position[1], "expiration": currentTime + 1})
+    return gold, boatAndPirate
+
+def checkSatisfaction(boatAndPirate, population, gold, floatingTexts):
+    for boat, pirate in boatAndPirate:
+        if pirate is not None:
+            if pirate.hunger <= 0 or pirate.sleep <= 0:
+                boatAndPirate.remove((boat, pirate))
+                population -= 1
+                gold -= 100
+                floatingTexts.append({"text": "-100$", "x": pirate.position[0], "y": pirate.position[1], "expiration": time.time() + 1})
+                updateExpenses(100)
+    return population, gold, boatAndPirate, floatingTexts
+
+def updatePirates(boatAndPirate, placedItems, gold, speedMutiplier, population, floatingTexts, enemyAttack, piratesOnIsland, landPositions):
+    for boat,pirate in boatAndPirate:
+        if pirate is not None:
+            if pirate.health <= 0:
+                boatAndPirate.remove((boat, pirate))
+                population -= 1
+                gold -= 100
+                floatingTexts.append({"text": "-100$", "x": pirate.position[0], "y": pirate.position[1], "expiration": time.time() + 1})
+                updateExpenses(100)
+
+    for boat, pirate in boatAndPirate:
+        if pirate is not None:
+            pirate.draw(screen, cameraX, cameraY, zoomLevel)
+            pirate.findEnemies(enemyPirates)
+            population, gold, boatAndPirate, floatingTexts = checkSatisfaction(boatAndPirate, population, gold, floatingTexts)
+            pirate.updateSpeed(speedMultiplier)
+            if pirate.enemy is not None:
+                if pirate.isAtObject(pirate.enemy.rect.center):
+                    pirate.attack()
+                else:
+                    pirate.moveTowards(pirate.enemy.rect.center)
+            else:
+                gold, boatAndPirate  = piratePayment(pirate, gold, speedMultiplier, landPositions)
+        
+    for enemy in enemyPirates:
+        if enemy.health <= 0:
+            if enemy.foundTarget:
+                enemy.target.beingAttacked = False
+            enemyPirates.remove(enemy)
+            
+    for enemy in enemyPirates:
+        enemy.draw(screen, cameraX, cameraY)
+        if not enemy.foundTarget:
+            enemy.findClosestObject(placedItems)
+            if not enemy.foundTarget:
+                enemy.findClosestPirate(boatAndPirate)
+            enemy.moveAround(landPositions)
+        elif enemy.atTarget():
+            enemy.attack()
+        elif enemy.foundTarget:
+            enemy.moveTowards()
+    
+    if len(enemyPirates) == 0 and piratesOnIsland:
+        enemyAttack = False
+        piratesOnIsland = False
+            
+    return gold, boatAndPirate, population, floatingTexts, enemyAttack, piratesOnIsland
+
+def toggleUpgradeBox(placedItems, adjustedMouseX, adjustedMouseY, gold, zoomLevel, cameraX, cameraY):
+    for items in placedItems:
+        if isinstance(items["item"], Dock):
+            dock = items["item"]
+            if dock.rect.collidepoint(adjustedMouseX, adjustedMouseY):
+                dock.toggleUpgrade((adjustedMouseX, adjustedMouseY))
+            gold = dock.upgradeBoxClicked((adjustedMouseX, adjustedMouseY), gold)
+        elif isinstance(items["item"], Tent):
+            tent = items["item"]
+            if tent.rect.collidepoint(adjustedMouseX, adjustedMouseY):
+                tent.toggleUpgrade([adjustedMouseX, adjustedMouseY])
+            gold = tent.upgradeBoxClicked((adjustedMouseX, adjustedMouseY), gold)
+    return gold
+
+def drawUpgradeBox(placedItems, cameraX, cameraY, zoomLevel):
+    for items in placedItems:
+        if isinstance(items["item"], Dock):
+            dock = items["item"]
+            dock.drawUpgrade(screen, cameraX, cameraY, zoomLevel)
+        elif isinstance(items["item"], Tent):
+            tent = items["item"]
+            tent.drawUpgrade(screen, cameraX, cameraY, zoomLevel)
+
+def adjustMouseCoordinates(mouseX, mouseY, cameraX, cameraY, zoomLevel):
+    # Adjust mouse coordinates for zoom level
+    adjustedMouseX = (mouseX - cameraX) / zoomLevel
+    adjustedMouseY = (mouseY - cameraY) / zoomLevel
+    return adjustedMouseX, adjustedMouseY
+
+def drawMouse(screen, gridSize, cameraX, cameraY):
+    mouseX, mouseY = pygame.mouse.get_pos()
+    adjustedMouseX = mouseX - cameraX
+    adjustedMouseY = mouseY - cameraY
+    posX = adjustedMouseX//gridSize * gridSize 
+    posY = adjustedMouseY//gridSize * gridSize 
+    screenX = posX + cameraX
+    screenY = posY + cameraY
+    rect = pygame.Rect(screenX, screenY, gridSize, gridSize)
+    pygame.draw.rect(screen, (0, 0, 0), rect, width=2) 
+
+def increaseCropCount(speedMultiplier):
+    for group in farmGroups:
+        group.generateCrops(speedMultiplier)  # Generate crops for the group
+        group.drawCropCount(screen, font, cameraX, cameraY)  # Display crop count
+
+def groupFarms(farm, farmGroups):
+    connectedGroups = []
+
+    # Find all groups connected to the newly added farm
+    for group in farmGroups:
+        if any(areAdjacent(farm, otherFarm) for otherFarm in group.farms):
+            connectedGroups.append(group)
+
+    if connectedGroups:
+        # Merge all connected groups into a single group
+        primaryGroup = connectedGroups[0]
+        for group in connectedGroups[1:]:
+            for otherFarm in group.farms:
+                primaryGroup.addFarm(otherFarm)
+            farmGroups.remove(group)  # Remove merged group from the list
+        primaryGroup.addFarm(farm)
+    else:
+        # Create a new group if no connections found
+        newGroup = FarmGroup()
+        newGroup.addFarm(farm)
+        farmGroups.append(newGroup)
+     # Debug: Print coordinates of farms in groups
+    #for group in farmGroups:
+     #   print("Farm Group Coordinates:", group.getCoordinates())
+
+
+def mergeGroups(targetGroup, farmGroups):
+    # Merge all overlapping groups into the target group
+    for group in farmGroups[:]:  # Use a copy of the list to modify while iterating
+        if group != targetGroup and any(
+            areAdjacent(farm1, farm2) for farm1 in targetGroup.farms for farm2 in group.farms
+        ):
+            # Merge farms from this group into the target group
+            for farm in group.farms:
+                targetGroup.addFarm(farm)
+            farmGroups.remove(group)  # Remove the merged group
+
+def areAdjacent(farm1, farm2):
+    # Define adjacency as within 50 pixels (or any suitable distance)
+    distanceX = abs(farm1.rect.centerx - farm2.rect.centerx)
+    distanceY = abs(farm1.rect.centery - farm2.rect.centery)
+    return distanceX <= 20 and distanceY <= 20
+
+def updateFoodCount():
+    for item in placedItems:
+        if isinstance(item["item"], Cookhouse):
+            item["item"].drawFoodCount(screen, cameraX, cameraY)
+        if isinstance(item["item"], Restaurant):
+            item["item"].drawFoodCount(screen, cameraX, cameraY)
+
+def moveFarmer(placedItems, pathGrid, screen, cameraX, cameraY):
+    for item in placedItems:
+        if isinstance(item["item"], Farmer):
+            farmer = item["item"]
+
+            if farmer.role == 'farmToCookhouse':
+                # Determine the farmer's current state and set the target accordingly
+                if not farmer.carryingCrops:  # Move to farm first if not carrying crops
+                    closestFarm = None
+                    minDistance = float('inf')
+                    for farm in placedItems:
+                        if isinstance(farm["item"], Farm):
+                            farm = farm["item"]
+                            distance = farmer.calculateDistance(farm)
+                            if distance < minDistance and farmer.hasAPath(farm, pathGrid):
+                                closestFarm = farm
+                                minDistance = distance
+
+                    if closestFarm and not farmer.isAtFarm(closestFarm):
+                        farmer.moveTowards(closestFarm, pathGrid)
+                    elif closestFarm:
+                        # Get crops from the farm group
+                        for group in farmGroups:
+                            if closestFarm in group.farms:
+                                farmer.getCrops(group)
+                                break
+                else:  # If carrying crops, move to the cookhouse
+                    closestCookhouse = None
+                    minDistance = float('inf')
+                    for cookHouse in placedItems:
+                        if isinstance(cookHouse["item"], Cookhouse):
+                            cookhouse = cookHouse["item"]
+                            distance = farmer.calculateDistance(cookhouse)
+                            if distance < minDistance and farmer.hasAPath(cookhouse, pathGrid):
+                                closestCookhouse = cookhouse
+                                minDistance = distance
+                    if closestCookhouse and not farmer.isAtCookhouse(closestCookhouse):
+                    
+                        farmer.moveTowards(closestCookhouse, pathGrid)
+                
+                    elif closestCookhouse:
+                        farmer.dropCrops(closestCookhouse)  # Drop off crops
+                        farmer.carryingCrops = False  # Reset carrying state
+            else:
+                if not farmer.carryingFood:
+                    closestCookhouse = None
+                    minDistance = float('inf')
+                    for cookHouse in placedItems:
+                        if isinstance(cookHouse["item"], Cookhouse):
+                            cookhouse = cookHouse["item"]
+                            distance = farmer.calculateDistance(cookhouse)
+                            if distance < minDistance and farmer.hasAPath(cookhouse, pathGrid):
+                                closestCookhouse = cookhouse
+                                minDistance = distance
+                    if closestCookhouse and not farmer.isAtCookhouse(closestCookhouse):
+                        farmer.moveTowards(closestCookhouse, pathGrid)
+                    elif closestCookhouse:
+                        farmer.getFood(closestCookhouse)
+                        farmer.carryingFood = True
+                else:
+                    closestRestaurant = None
+                    minDistance = float('inf')
+                    for restaurant in placedItems:
+                        if isinstance(restaurant["item"], Restaurant):
+                            restaurant = restaurant["item"]
+                            distance = farmer.calculateDistance(restaurant)
+                            if distance < minDistance and farmer.hasAPath(restaurant, pathGrid):
+                                closestRestaurant = restaurant
+                                minDistance = distance
+
+                    if closestRestaurant and not farmer.isAtPlace(closestRestaurant):
+                        farmer.moveTowards(closestRestaurant, pathGrid)
+                    elif closestRestaurant:
+                        farmer.dropFood(closestRestaurant) 
+                        farmer.carryingFood = False
+           
+            farmer.draw(screen, cameraX, cameraY)
+
+def enemyArriveAtIsland(enemyShips, shipAdded, enemyAttack):
+    if enemyAttack and not shipAdded:
+        enemyShip = Boat((800, 1200), "none")
+        enemyShips.add(enemyShip)
+        shipAdded = True
+    return enemyAttack, shipAdded
+
+def enemyPiratesSpawn(enemyGroup, noOfPirates, position, enemyAttack, piratesSpawned, piratesOnIsland):
+    if enemyAttack and piratesSpawned:
+        for i in range(noOfPirates + 1):
+            enemyPirate = Enemy(position)
+            enemyGroup.add(enemyPirate)
+        piratesSpawned = False
+        piratesOnIsland = True
+       # enemyAttack = False
+    return enemyAttack, piratesSpawned, piratesOnIsland
+
+def watchTowerShoot(placedItems, enemyPirates):
+    for watchTower in placedItems:
+        if isinstance(watchTower["item"], WatchTower):
+            watchTower = watchTower["item"]              
+            watchTower.findClosestEnemy(enemyPirates)
+            if watchTower.enemy:
+                watchTower.shoot()
+                watchTower.drawCannonBalls(screen, cameraX, cameraY)
+
+def randomPirateAttack(gold, lastAttackCheck, enemyAttack):
+    currentTime = time.time()
+    if currentTime - lastAttackCheck >= 120:  # Check every 60 seconds
+        lastAttackCheck = time.time()  # Reset timer
+        probabilityOfAttack = min(1.0, 0.5 + gold/200000)
+        if random.random() < probabilityOfAttack and not enemyAttack:
+            return True, lastAttackCheck
+        else:
+            return False, lastAttackCheck
+    else:
+        return False, lastAttackCheck
+    
+ISLAND_SIZE = 300  # Base square size
+EDGE_VARIATION = 20  # How much edges can extend/shrink
+GREEN = (34, 139, 34)
+islandArea = 5000
+
+def generateIsland(WIDTH, HEIGHT, scale=80, threshold=0, stepSize=20):
+    """Creates a large, single green island using Perlin noise with a circular mask."""
+    island_surface = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+    island_surface.fill((0,0,0,0))  # Default to water
+
+    noise = PerlinNoise(octaves=3, seed=random.randint(0, 10000))
+
+    center_x, center_y = WIDTH // 2, HEIGHT // 2
+    max_distance = min(WIDTH, HEIGHT) // 2  # Radius of the island
+
+    land_positions = []
+
+    for y in range(0, HEIGHT, stepSize):
+        for x in range(0, WIDTH, stepSize):
+            nx = x / scale
+            ny = y / scale
+            noise_value = noise([nx, ny])  # Get Perlin noise value
+
+            # Circular mask: distance from center determines land probability
+            distance = math.sqrt((x - center_x) ** 2 + (y - center_y) ** 2)
+            falloff = max(0, 1 - (distance / max_distance) ** 2)  # Quadratic falloff
+
+            # Combine Perlin noise with falloff
+            final_value = noise_value * falloff
+
+            if final_value > threshold:
+                pygame.draw.rect(island_surface, GREEN, (x, y, stepSize, stepSize))
+                land_positions.append((x, y))  # Store land positions
+
+    # Step 2: Fill in the gaps by expanding land
+    for _ in range(3):  # Expand land a few times
+        new_land_positions = land_positions.copy()  # Copy existing land
+        for x, y in land_positions:
+            for dx, dy in [(-stepSize, 0), (stepSize, 0), (0, -stepSize), (0, stepSize)]:
+                new_x, new_y = x + dx, y + dy
+                if 0 <= new_x < WIDTH and 0 <= new_y < HEIGHT:
+                    new_land_positions.append((new_x, new_y))  # Expand land
+                    pygame.draw.rect(island_surface, GREEN, (new_x, new_y, stepSize, stepSize))
+        land_positions = new_land_positions    
+    return island_surface, land_positions
+
+island, landPositions = generateIsland(1600, 800)
+lastGoldReductionTime = time.time()
+
+run = True
+while run:
+    #Handle inputs
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            run = False
+        elif event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP):
+            adjustedIslandWidth = islandWidth * zoomLevel
+            adjustedIslandHeight = islandHeight * zoomLevel
+
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                mouseX, mouseY = pygame.mouse.get_pos()
+                adjustedMouseX, adjustedMouseY = adjustMouseCoordinates(mouseX, mouseY, cameraX, cameraY, zoomLevel)
+                print("mouse",adjustedMouseX, adjustedMouseY)
+                handleSpeedButtonClick(mouseX, mouseY)
+                showStatsMenu = ToggleStatsDisplay(mouseX, mouseY, showStatsMenu)
+                gold, placedItems, selectedItem, isDock, noOfItems, landPositions = handleMenuClicks(mouseX, mouseY, adjustedMouseX,
+                                            adjustedMouseY, gold, noOfItems, selectedItem, menuItems, isDock, islandWidth, islandHeight, gridSize, dockBoats, landPositions)
+                gold = toggleUpgradeBox(placedItems, adjustedMouseX, adjustedMouseY, gold, zoomLevel, cameraX, cameraY)    
+    
+    keys = pygame.key.get_pressed()
+    cameraX, cameraY = cameraMovement(keys, cameraX, cameraY, speed)
+
+    screen.fill((0, 105, 148))  # Fill screen with water color
+    # Draw the island surface to the screen
+    screen.blit(island, (cameraX, cameraY))
+    
+    noOfItems, boatAndPirate, population, enemiesArriving, enemyAttack, piratesSpawned = spawnBoat(noOfItems, boatAndPirate, population, cameraX, cameraY, enemiesArriving, enemyAttack, piratesSpawned) #moves boat towards entrance
+    drawPlacedItems(placedItems, cameraX, cameraY, zoomLevel)
+    showFloatingTexts(screen, floatingTexts, cameraX, cameraY, font)
+    increaseCropCount(speedMultiplier)
+    updateFoodCount()
+    moveFarmer(placedItems, pathGrid, screen, cameraX, cameraY)
+    gold = generateGoldAtDock(placedItems, gold, cameraX, cameraY, floatingTexts, screen, speedMultiplier)
+    boatsAtDock(dockBoats, timer)
+    drawBoats(screen, cameraX, cameraY)
+
+    randomAttack, lastAttackCheck = randomPirateAttack(gold, lastAttackCheck, enemyAttack)
+    if randomAttack: #enemy attack becomes false once they reach the island
+        enemyAttack = True
+        piratesSpawned = False
+        shipAdded = False
+        piratesDefeated = False
+    if enemyAttack and piratesOnIsland:
+        currentTime = time.time()
+        if currentTime - lastGoldReductionTime >= 2:  # Check if 2 seconds passed
+            lastGoldReductionTime = currentTime  # Reset timer
+            gold -= 10
+    enemyAttack, shipAdded = enemyArriveAtIsland(enemyShips, shipAdded, enemyAttack)
+    enemyAttack, piratesSpawned, piratesOnIsland = enemyPiratesSpawn(enemyPirates, 5, (810//20 * 20, 750// 20 * 20), enemyAttack, piratesSpawned, piratesOnIsland)
+    gold, boatAndPirate, population, floatingTexts, enemyAttack, piratesOnIsland = updatePirates(boatAndPirate, placedItems, gold, speedMultiplier, population, floatingTexts, enemyAttack, piratesOnIsland, landPositions) #updates pirates movements and payments when interacting with palcedItems
+    watchTowerShoot(placedItems, enemyPirates)
+
+    drawUpgradeBox(placedItems, cameraX, cameraY, zoomLevel) #when upgrade box is clicked shows it above item 
+    drawMenuItems(menuItems)
+    updateDate()
+    displayDate(screen, font)
+    displayTimeSpeedSettings()
+    updateSpeeds(boatAndPirate, placedItems, speedMultiplier)
+    updateDateAndProfit()
+    drawStats(gold, population, White)
+    drawStatsButton()
+    drawStatsDisplay(showStatsMenu, profitLog, currentMonthIncome, currentMonthExpenses, currentMonthProfit, currentDate)
+    drawMouse(screen, gridSize, cameraX, cameraY)
+
+    pygame.display.update()
+    timer.tick(fps)
+    
+pygame.quit()
