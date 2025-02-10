@@ -548,6 +548,7 @@ class Boat(pygame.sprite.Sprite):
     def move(self, x, y):
         self.position = (self.position[0] + x, self.position[1] + y)
         self.rect.topleft = self.position
+
 import pygame
 import time
 
@@ -568,6 +569,7 @@ class Building(pygame.sprite.Sprite):
         self.health = 100
         self.showHealthBar = False
         self.healthBarStartTime = 0
+        self.upgradeCost = 30
 
     def isAvailable(self):
         return len(self.visitors) < self.capacity
@@ -586,30 +588,73 @@ class Building(pygame.sprite.Sprite):
             self.visibleUpgradeBox = not self.visibleUpgradeBox
 
     def drawUpgrade(self, screen, cameraX, cameraY, zoomLevel):
-        # Draw the upgrade box if visible
         if self.visibleUpgradeBox:
             # Adjust position and dimensions for zoom
-            adjustedX = self.rect.x * zoomLevel - 25 * zoomLevel
-            adjustedY = self.rect.y * zoomLevel - 30 * zoomLevel
-            boxWidth = int(40 * zoomLevel)
-            boxHeight = int(10 * zoomLevel)
+            centerx, centery = self.rect.center
+            adjustedX = centerx * zoomLevel - 25 * zoomLevel
+            adjustedY = centery * zoomLevel - 50 * zoomLevel  # Shift upwards for extra bar space
+            boxWidth = int(80 * zoomLevel)
+            boxHeight = int(20 * zoomLevel)
 
-            # Draw the scaled upgrade box
+            # Draw Repair Box (above Upgrade Box)
+            repairBoxY = adjustedY - boxHeight  # Position above the upgrade box
+            pygame.draw.rect(screen, (180, 180, 180), (adjustedX + cameraX, repairBoxY + cameraY, boxWidth, boxHeight))
+
+            # Draw Upgrade Box
             pygame.draw.rect(screen, (200, 200, 200), (adjustedX + cameraX, adjustedY + cameraY, boxWidth, boxHeight))
 
             # Adjust font size for zoom
-            fontSize = int(8 * zoomLevel)
+            fontSize = int(16 * zoomLevel)
             font = pygame.font.SysFont(None, fontSize)
 
-            # Render and position text
-            text = font.render(f"Upgrade {self.upgradeCost}$", True, (0, 0, 0))
-            textX = adjustedX + 5 * zoomLevel  # Adjust text padding for zoom
-            textY = adjustedY + 5 * zoomLevel
-            screen.blit(text, (textX + cameraX, textY + cameraY))
+            # Render Upgrade Text
+            upgradeText = font.render(f"Upgrade {self.upgradeCost}$", True, (0, 0, 0))
+            screen.blit(upgradeText, (adjustedX + 5 * zoomLevel + cameraX, adjustedY + 5 * zoomLevel + cameraY))
 
-    def upgradeBoxClicked(self, mousePos, gold):
+            # Render Repair Text
+            repairText = font.render("Repair 30$", True, (0, 0, 0))
+            screen.blit(repairText, (adjustedX + 5 * zoomLevel + cameraX, repairBoxY + 5 * zoomLevel + cameraY))
+
+    def upgradePressed(self, mousePos, gold, cameraX, cameraY):
         if self.visibleUpgradeBox:
-            upgradeBoxRect = pygame.Rect(self.rect.x - 25, self.rect.y - 30, 200, 25)
+            centerx, centery = self.rect.center
+            adjustedX = centerx  - 25 
+            adjustedY = centery  - 50 
+            boxWidth = int(80 )
+            boxHeight = int(20 )
+
+            # Define boxes at the same positions where they're drawn
+            repairBoxY = adjustedY - boxHeight
+            
+            # Define Upgrade Box Rectangle
+            upgradeBoxRect = pygame.Rect(
+                adjustedX ,
+                adjustedY ,
+                boxWidth,
+                boxHeight
+            )
+
+            # Define Repair Box Rectangle
+            repairBoxRect = pygame.Rect(
+                adjustedX ,
+                repairBoxY ,
+                boxWidth,
+                boxHeight
+            )
+
+            # Check if Repair button is clicked
+            if repairBoxRect.collidepoint(mousePos) and gold >= 30:
+                gold -= 30
+                self.health = self.maxHealth
+                self.showHealthBar = True
+
+            # Check if Upgrade button is clicked
+            elif upgradeBoxRect.collidepoint(mousePos) and gold >= self.upgradeCost:
+                gold -= self.upgradeCost
+                self.upgradeCost += 30
+                self.level += 1
+                self.applyUpgrade()
+        
         return gold
     
     def drawHealthBar(self, screen, cameraX, cameraY):
@@ -641,9 +686,7 @@ class Building(pygame.sprite.Sprite):
         # Draw the health bar if it should be displayed
         if self.showHealthBar:
             self.drawHealthBar(screen, cameraX, cameraY)
-
     
-
 import pygame
 from buildings import Building
 class Cookhouse(Building):
@@ -1163,8 +1206,8 @@ class Tent(Building):
                 self.upgradeCost += 100
         return gold
 
-    def update(self):
-        pass
+    def applyUpgrade(self):
+        self.sleepPoints += 10
 
 import pygame
 import time
@@ -1233,6 +1276,30 @@ class WatchTower(Building):
                     self.enemy = None
                 self.cannonBalls.remove(cannonball)
 
+    def applyUpgrade(self):
+        self.range += 10
+        self.damage += 5
+        self.attackCooldown -= 0.1
+
+import pygame
+import random
+from dock import Dock
+from boat import Boat
+from pirate import Pirate
+from tent import Tent
+from restuarant import Restaurant
+from farm import Farm, FarmGroup
+from cookhouse import Cookhouse
+from map import TileKind, Map
+from farmer import Farmer
+import time
+from path import Path, Land
+from datetime import datetime, timedelta
+import math
+from enemy import Enemy
+from watchTower import WatchTower
+from perlin_noise import PerlinNoise
+import numpy as np
 
 #Game Settings
 pygame.init()
@@ -1309,7 +1376,7 @@ white = (255, 255, 255)
 grey = (128, 128, 128)
 
 #Game Variables
-gold = 1000
+gold = 100000
 population = 0
 noOfItems = 0
 placedItems = []
@@ -1986,10 +2053,10 @@ def updatePirates(boatAndPirate, placedItems, gold, speedMutiplier, population, 
             population, gold, boatAndPirate, floatingTexts = checkSatisfaction(boatAndPirate, population, gold, floatingTexts)
             pirate.updateSpeed(speedMultiplier)
             if pirate.enemy is not None:
-                if pirate.isAtObject(pirate.enemy.rect.center):
+                if pirate.isAtObject([pirate.enemy.rect.x, pirate.enemy.rect.y]):
                     pirate.attack()
                 else:
-                    pirate.moveTowards(pirate.enemy.rect.center)
+                    pirate.moveTowards([pirate.enemy.rect.x, pirate.enemy.rect.y], landPositions)
             else:
                 gold, boatAndPirate  = piratePayment(pirate, gold, speedMultiplier, landPositions)
         
@@ -2009,7 +2076,7 @@ def updatePirates(boatAndPirate, placedItems, gold, speedMutiplier, population, 
         elif enemy.atTarget():
             enemy.attack()
         elif enemy.foundTarget:
-            enemy.moveTowards()
+            enemy.moveTowards(landPositions)
     
     if len(enemyPirates) == 0 and piratesOnIsland:
         enemyAttack = False
@@ -2017,28 +2084,30 @@ def updatePirates(boatAndPirate, placedItems, gold, speedMutiplier, population, 
             
     return gold, boatAndPirate, population, floatingTexts, enemyAttack, piratesOnIsland
 
-def toggleUpgradeBox(placedItems, adjustedMouseX, adjustedMouseY, gold, zoomLevel, cameraX, cameraY):
+def toggleUpgradeBox(placedItems, adjustedMouseX, adjustedMouseY, gold, zoomLevel, cameraX, cameraY, selectedItem):
     for items in placedItems:
         if isinstance(items["item"], Dock):
             dock = items["item"]
             if dock.rect.collidepoint(adjustedMouseX, adjustedMouseY):
+                selectedItem = None
                 dock.toggleUpgrade((adjustedMouseX, adjustedMouseY))
-            gold = dock.upgradeBoxClicked((adjustedMouseX, adjustedMouseY), gold)
-        elif isinstance(items["item"], Tent):
-            tent = items["item"]
-            if tent.rect.collidepoint(adjustedMouseX, adjustedMouseY):
-                tent.toggleUpgrade([adjustedMouseX, adjustedMouseY])
-            gold = tent.upgradeBoxClicked((adjustedMouseX, adjustedMouseY), gold)
-    return gold
+            gold = dock.upgradePressed((adjustedMouseX, adjustedMouseY), gold, cameraX, cameraY)  
+        elif not isinstance(items["item"], Farmer) and not isinstance(items["item"], Path) and not isinstance(items["item"], Land) and not isinstance(items["item"], Farm):
+            item = items["item"]
+            if item.rect.collidepoint(adjustedMouseX, adjustedMouseY):
+                item.toggleUpgrade((adjustedMouseX, adjustedMouseY))
+                selectedItem = None
+            gold = item.upgradePressed((adjustedMouseX, adjustedMouseY), gold, cameraX, cameraY)
+    return gold, selectedItem
 
 def drawUpgradeBox(placedItems, cameraX, cameraY, zoomLevel):
     for items in placedItems:
         if isinstance(items["item"], Dock):
             dock = items["item"]
             dock.drawUpgrade(screen, cameraX, cameraY, zoomLevel)
-        elif isinstance(items["item"], Tent):
-            tent = items["item"]
-            tent.drawUpgrade(screen, cameraX, cameraY, zoomLevel)
+        elif not isinstance(items["item"], Farmer) and not isinstance(items["item"], Path) and not isinstance(items["item"], Land) and not isinstance(items["item"], Farm):
+            item = items["item"]
+            item.drawUpgrade(screen, cameraX, cameraY, zoomLevel)
 
 def adjustMouseCoordinates(mouseX, mouseY, cameraX, cameraY, zoomLevel):
     # Adjust mouse coordinates for zoom level
@@ -2275,6 +2344,8 @@ def generateIsland(WIDTH, HEIGHT, scale=80, threshold=0, stepSize=20):
     return island_surface, land_positions
 
 island, landPositions = generateIsland(1600, 800)
+for x in range(len(landPositions)):
+    landPositions[x] = (landPositions[x][0]//20 * 20, landPositions[x][1]//20 * 20)
 lastGoldReductionTime = time.time()
 
 run = True
@@ -2295,7 +2366,7 @@ while run:
                 showStatsMenu = ToggleStatsDisplay(mouseX, mouseY, showStatsMenu)
                 gold, placedItems, selectedItem, isDock, noOfItems, landPositions = handleMenuClicks(mouseX, mouseY, adjustedMouseX,
                                             adjustedMouseY, gold, noOfItems, selectedItem, menuItems, isDock, islandWidth, islandHeight, gridSize, dockBoats, landPositions)
-                gold = toggleUpgradeBox(placedItems, adjustedMouseX, adjustedMouseY, gold, zoomLevel, cameraX, cameraY)    
+                gold, selectedItem = toggleUpgradeBox(placedItems, adjustedMouseX, adjustedMouseY, gold, zoomLevel, cameraX, cameraY, selectedItem)    
     
     keys = pygame.key.get_pressed()
     cameraX, cameraY = cameraMovement(keys, cameraX, cameraY, speed)
