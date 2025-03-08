@@ -1,18 +1,22 @@
 import pygame
 
 class Boat(pygame.sprite.Sprite):
-    def __init__(self, start_pos, dockType):
+    def __init__(self, startPos, dockType):
         super().__init__()
-        self.position = start_pos
-        self.image = pygame.image.load(r'C:\Users\Study\Pirate Tycoon\__pycache__\d68usui-ef6c334e-11b7-4f75-88b9-ecd34c5d4bf0.png')
+        self.position = startPos
+        self.image = pygame.image.load(r"C:\Users\Study\PycharmProjects\NEA Images\d68usui-ef6c334e-11b7-4f75-88b9-ecd34c5d4bf0.png")
         self.image = pygame.transform.scale(self.image, (20, 60))
-        self.rect = self.image.get_rect(center=start_pos)
+        self.rect = self.image.get_rect(center=startPos)
         self.speed = 2
+        self.baseSpeed = 2
         self.active = True  # Track if the boat is still moving
         self.orientation = "movingDown"
         self.dockType = dockType
         self.returning = False
         self.speedSet = False
+
+    def updateSpeed(self, speedMultiplier):
+        self.speed = self.baseSpeed * speedMultiplier
     
     def isAtTarget(self, targetPos, tolerance=10):
         # Returns True if the boat is within the tolerance distance from the target position
@@ -20,32 +24,32 @@ class Boat(pygame.sprite.Sprite):
             return True
         return False
 
-    def moveTowards(self, target_pos):
+    def moveTowards(self, targetPos):
         if self.active:
-            directionX = target_pos[0] - self.rect.x
-            directionY = target_pos[1] - self.rect.y
+            directionX = targetPos[0] - self.rect.x
+            directionY = targetPos[1] - self.rect.y
             distance = (directionX ** 2 + directionY ** 2) ** 0.5
 
-            # Check if the boat is close enough to the target, considering tolerance
+            # Normalize direction and move the boat towards the target position, using the boat's speed
             if distance > self.speed:
                 # Normalize direction and move the boat towards the target position
                 self.rect.x += directionX / distance * self.speed
                 self.rect.y += directionY / distance * self.speed
             else:
                 # Move the boat directly to the target position and stop moving
-                self.rect.x = target_pos[0]
-                self.rect.y = target_pos[1]
+                self.rect.x = targetPos[0]
+                self.rect.y = targetPos[1]
                 self.active = False  # Stop moving when at the target position
 
     def draw(self, screen, cameraX, cameraY):
 
         # Scale the image based on the zoom level
-        scaled_image = pygame.transform.scale(self.image,
+        scaledImage = pygame.transform.scale(self.image,
                                               (int(self.image.get_width()  ),
                                                int(self.image.get_height()  )))
 
         # Adjust the position of the object with zoom
-        screen.blit(scaled_image, (self.rect.x  + cameraX, self.rect.y  + cameraY))
+        screen.blit(scaledImage, (self.rect.x  + cameraX, self.rect.y  + cameraY))
 
     def drawBattleShip(self, screen):
         if self.orientation == "movingRight":
