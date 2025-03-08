@@ -1,9 +1,10 @@
 import time
 import pygame
 from buildings import Building
+
 class Dock(Building):
-    def __init__(self, size, position, orientation):
-        super().__init__(position)
+    def __init__(self, size, position, orientation, price):
+        super().__init__(position, price)
         self.image = pygame.image.load(r"C:\Users\Study\PycharmProjects\NEA Images\Wp3TJeiWRvK6ltBUFT4DdQ.jpg")
         self.image = pygame.transform.scale(self.image, (20, 20))
         if orientation == "right":
@@ -22,64 +23,69 @@ class Dock(Building):
         self.level = 1
         self.lastGenerated = time.time()
         self.visibleUpgradeBox = True
-        self.upgradeCost = 30
+        if self.size == "small":
+            self.upgradeCost = 50000
+        elif self.size == "medium":
+            self.upgradeCost = 250000
+        elif self.size == "large":
+            self.upgradeCost = 700000
         self.boatAdded = False
 
     def setGoldRate(self):
         if self.size == 'small':
             return 100
         elif self.size == 'medium':
-            return 200
+            return 10000
         elif self.size == 'large':
-            return 300
+            return 30000
 
     def setReturnFrequency(self):
         if self.size == "small":
-            return 5
+            return 30
         elif self.size == "medium":
-            return 3
+            return 60
         elif self.size == "large":
-            return 2
+            return 90
 
-    def isTimeForReturn(self):
+    def isTimeForReturn(self, speedMultiplier):
         currentTime = time.time()
-        if currentTime - self.lastGenerated >= self.returnFrequency:
+        if currentTime - self.lastGenerated >= self.returnFrequency/ speedMultiplier:
             self.lastGenerated = currentTime
             return True
         return False
-
-    def drawUpgrade(self, screen, cameraX, cameraY, zoomLevel):
-        if self.visibleUpgradeBox:
-            boxWidth = int(20 * zoomLevel)
-            boxHeight = int(20 * zoomLevel)
-            adjustedX = self.rect.centerx * zoomLevel - boxWidth // 2
-            adjustedY = self.rect.top * zoomLevel - boxHeight - 10 * zoomLevel  
-
-            pygame.draw.rect(screen, (200, 200, 200), 
-                            (adjustedX + cameraX, adjustedY + cameraY, boxWidth, boxHeight))
-
-            fontSize = int(8 * zoomLevel)
-            font = pygame.font.SysFont(None, fontSize)
-
-            text = font.render(f"Upgrade {self.upgradeCost}$", True, (0, 0, 0))
-            textRect = text.get_rect(center=(adjustedX + boxWidth / 2 + cameraX, 
-                                            adjustedY + boxHeight / 2 + cameraY))
-            screen.blit(text, textRect)
-
 
     def toggleUpgrade(self, mousePos):
         # If dock is clicked, show the upgrade box
         if self.rect.collidepoint(mousePos):
             self.visibleUpgradeBox = not self.visibleUpgradeBox
 
-    def upgradeBoxClicked(self,mousePos, gold):
-        if self.visibleUpgradeBox:
-            upgradeBoxRect = pygame.Rect(self.rect.x - 25 , self.rect.y - 30, 200, 25)
-
-            if upgradeBoxRect.collidepoint(mousePos) and gold >= self.upgradeCost:
-                self.goldRate += 50
-                if self.returnFrequency > 1:
-                    self.returnFrequency -= 1
-                gold -= self.upgradeCost
-                self.upgradeCost += 100
-        return gold
+    def applyUpgrade(self):
+        if self.size == "small":
+            if self.level == 2:
+                self.goldRate = 1000
+                self.upgradeCost = 100000
+            elif self.level == 3:
+                self.goldRate = 5000
+                self.upgradeCost += 100000
+            else:
+                self.goldRate += 5000
+                self.upgradeCost += 5000
+        elif self.size == "medium":
+            if self.level == 2:
+                self.goldRate = 15000
+                self.upgradeCost = 400000
+            elif self.level == 3:
+                self.goldRate =20000
+                self.upgradeCost += 100000
+            else:
+                self.goldRate += 25000
+                self.upgradeCost += 10000
+        elif self.size == "large":
+            if self.level == 2:
+                self.goldRate = 35000
+                self.upgradeCost = 800000
+            elif self.level == 3:
+                self.goldRate = 50000
+            else:
+                self.goldRate += 100000
+                self.upgradeCost += 300000
