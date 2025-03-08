@@ -18,6 +18,10 @@ class Farmer(pygame.sprite.Sprite):
         self.label = "Farmer"
         self.crops = 0
         self.role = None
+
+        self.path = None  # Stores the computed path
+        self.pathIndex = 0  # Tracks position in path
+        self.reversePath = False  # Tracks if the farmer is going back
     
     def checkBuildingAtEnd(self, pathGrid, placedItems):
         position = tuple(self.position)
@@ -76,8 +80,7 @@ class Farmer(pygame.sprite.Sprite):
             self.role = "cookhouseToRestaurant"
         else:
             self.role = None  # No valid role found; farmer won't move
-            
- 
+             
     def moveTowards(self, item, pathGrid):
         currentPos = tuple(self.position)
         targetPos = (item.position[0] + 20 // 2, item.position[1] + 20 // 2)
@@ -243,6 +246,9 @@ class Farmer(pygame.sprite.Sprite):
     
     def dropCrops(self, cookhouse):
         if self.carryingCrops and isinstance(cookhouse, Cookhouse):
+            if cookhouse.crops + self.crops > cookhouse.capacity:
+                cookhouse.crops = cookhouse.capacity
+                return
             self.carryingCrops = False
             cookhouse.crops += self.crops
             self.crops = 0
