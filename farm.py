@@ -2,8 +2,8 @@ import pygame
 from buildings import Building
 
 class Farm(Building):
-    def __init__(self, position):
-        super().__init__(position)
+    def __init__(self, position, price):
+        super().__init__(position, price)
         self.image = pygame.image.load(r"C:\Users\Study\Pirate Tycoon\images\farm.png")
         self.image = pygame.transform.scale(self.image, (20, 20))
         self.rect = self.image.get_rect(topleft=position)
@@ -13,9 +13,6 @@ class Farm(Building):
         self.label = "Farm"
         self.lastCropTime = pygame.time.get_ticks()
         self.group = None
-
-    def draw(self, screen, cameraX, cameraY):
-        screen.blit(self.image, (self.rect.x + cameraX, self.rect.y + cameraY))
 
     def increaseCropCount(self):
         currentTime = pygame.time.get_ticks()  # Get the current time in milliseconds
