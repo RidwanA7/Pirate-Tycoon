@@ -46,6 +46,7 @@ battleMode = False
 bullets_group = pygame.sprite.Group()  # Group to manage bullets
 playerBullets = pygame.sprite.Group()
 enemyBullets = pygame.sprite.Group()
+activeDisaster = None
 
 #speed settings
 slow = 60
@@ -282,6 +283,11 @@ def handleMenuClicks(mouseX, mouseY, adjustedMouseX, adjustedMouseY, gold, noOfI
     if selectedItem and mouseY < 500:
         gridPosition = (adjustedMouseX // gridSize * gridSize, adjustedMouseY // gridSize * gridSize)
 
+        gridPositionCenter = (
+            (adjustedMouseX // gridSize * gridSize) + gridSize // 2,
+            (adjustedMouseY // gridSize * gridSize) + gridSize // 2
+        )
+
         if any(item["pos"] == gridPosition for item in placedItems):
             if selectedItem == 'land' and any(item["orientation"] == "land" for item in placedItems if item["pos"] == gridPosition):
                 # Prevent placing land on top of land
@@ -302,9 +308,10 @@ def handleMenuClicks(mouseX, mouseY, adjustedMouseX, adjustedMouseY, gold, noOfI
                     "expiration": time.time() + 1
                 })
                 return gold, placedItems, selectedItem, isDock, noOfItems, landPositions
+            
         
         if selectedItem == 'farmer':  # Farmer-specific placement logic
-            if gridPosition not in pathGrid or not pathGrid.get(gridPosition, False):
+            if gridPositionCenter not in pathGrid or not pathGrid.get(gridPosition, False):
                 floatingTexts.append({
                     "text": "Farmers must be placed on paths!",
                     "x": adjustedMouseX,
@@ -579,19 +586,13 @@ def drawPlacedItems(placedItems, cameraX, cameraY, zoomLevel):
         scaledX = x * zoomLevel
         scaledY = y * zoomLevel
 
-        if dock:
-            drawDock(cameraX, cameraY, dock, orientation, scaledX, scaledY, zoomLevel, item)
+        object = item["item"]
+        if isinstance(object, Land):
+            pass
         else:
-            if isinstance(item["item"], Farmer):
-                pass
-            else:
-                object = item["item"]
-                if isinstance(object, Path) or isinstance(object, Land):
-                    pass
-                else:
-                    if object.health <= 0:
-                        placedItems.remove(item)
-                object.draw(screen, cameraX, cameraY)       
+            if object.health <= 0:
+                placedItems.remove(item)
+        object.draw(screen, cameraX, cameraY)       
 
 def drawDock(cameraX, cameraY, dock, orientation, scaledX, scaledY, zoomLevel, item):
     object = item["item"]
@@ -889,7 +890,7 @@ def adjustMouseCoordinates(mouseX, mouseY, cameraX, cameraY, zoomLevel):
     adjustedMouseY = (mouseY - cameraY) / zoomLevel
     return adjustedMouseX, adjustedMouseY
 
-def drawMouse(screen, gridSize, cameraX, cameraY):
+def drawMouse(screen, gridSize, cameraX, cameraY, destroyingMode):
     mouseX, mouseY = pygame.mouse.get_pos()
     adjustedMouseX = mouseX - cameraX
     adjustedMouseY = mouseY - cameraY
@@ -899,6 +900,12 @@ def drawMouse(screen, gridSize, cameraX, cameraY):
     screenY = posY + cameraY
     rect = pygame.Rect(screenX, screenY, gridSize, gridSize)
     pygame.draw.rect(screen, (0, 0, 0), rect, width=2) 
+
+    # If destroyingMode is active, draw a cross inside the box
+    if destroyingMode:
+        cross_color = (255, 0, 0)  # Red cross
+        pygame.draw.line(screen, cross_color, (screenX, screenY), (screenX + gridSize, screenY + gridSize), 3)  # Diagonal \
+        pygame.draw.line(screen, cross_color, (screenX, screenY + gridSize), (screenX + gridSize, screenY), 3)  # Diagonal /
 
 def increaseCropCount(speedMultiplier):
     for group in farmGroups:
@@ -955,6 +962,8 @@ def updateFoodCount():
         if isinstance(item["item"], Restaurant):
             item["item"].drawFoodCount(screen, cameraX, cameraY)
 
+
+
 def moveFarmer(placedItems, pathGrid, screen, cameraX, cameraY):
     for item in placedItems:
         if isinstance(item["item"], Farmer):
@@ -971,12 +980,11 @@ def moveFarmer(placedItems, pathGrid, screen, cameraX, cameraY):
                             distance = farmer.calculateDistance(farm)
                             if distance < minDistance and farmer.hasAPath(farm, pathGrid):
                                 closestFarm = farm
-                                minDistance = distance
+                                minDistance = distance    #finds closest farm
 
-                    if closestFarm and not farmer.isAtFarm(closestFarm):
+                    if closestFarm and not farmer.isAtFarm(closestFarm):  #moves towards the closest farm
                         farmer.moveTowards(closestFarm, pathGrid)
-                    elif closestFarm:
-                        # Get crops from the farm group
+                    elif closestFarm:                     # Get crops from the farm group
                         for group in farmGroups:
                             if closestFarm in group.farms:
                                 farmer.getCrops(group)
@@ -988,13 +996,11 @@ def moveFarmer(placedItems, pathGrid, screen, cameraX, cameraY):
                         if isinstance(cookHouse["item"], Cookhouse):
                             cookhouse = cookHouse["item"]
                             distance = farmer.calculateDistance(cookhouse)
-                            if distance < minDistance and farmer.hasAPath(cookhouse, pathGrid):
+                            if distance < minDistance and farmer.hasAPath(cookhouse, pathGrid): #finds closest cookhouse
                                 closestCookhouse = cookhouse
                                 minDistance = distance
-                    if closestCookhouse and not farmer.isAtCookhouse(closestCookhouse):
-                    
-                        farmer.moveTowards(closestCookhouse, pathGrid)
-                
+                    if closestCookhouse and not farmer.isAtCookhouse(closestCookhouse): #moves towards the closest cookhouse                   
+                        farmer.moveTowards(closestCookhouse, pathGrid)               
                     elif closestCookhouse:
                         farmer.dropCrops(closestCookhouse)  # Drop off crops
                         farmer.carryingCrops = False  # Reset carrying state
@@ -1134,13 +1140,116 @@ for x in range(len(landPositions)):
     landPositions[x] = (landPositions[x][0]//20 * 20, landPositions[x][1]//20 * 20)
 lastGoldReductionTime = time.time()
 
-landPrinted = False
+def triggerNaturalDisaster(landPositions, radius=200, warningTime=3):
+    """Selects a random land position and starts a disaster countdown."""
+    # Select a random land tile
+    disasterX, disasterY = random.choice(landPositions)
+    
+    return {
+        "x": disasterX,
+        "y": disasterY,
+        "radius": radius,
+        "startTime": time.time(),
+        "warningTime": warningTime,
+        "hitsRemaining": int(3),
+        "strikeTime": time.time() + 1
+    }
+
+def drawDisasterWarning(screen, cameraX, cameraY, disaster):
+    """Draws a warning circle where the disaster will strike."""
+    if disaster:
+        elapsed = time.time() - disaster["startTime"]
+        if elapsed < disaster["warningTime"]:
+            # Convert to screen coordinates with camera movement
+            screenX = int((disaster["x"] + cameraX))
+            screenY = int((disaster["y"] + cameraY))
+            adjustedRadius = int(disaster["radius"])
+
+            # Grey transparent circle
+            overlay = pygame.Surface((adjustedRadius * 2, adjustedRadius * 2), pygame.SRCALPHA)
+            pygame.draw.circle(overlay, (100, 100, 100, 120), (adjustedRadius, adjustedRadius), adjustedRadius)
+            screen.blit(overlay, (screenX - adjustedRadius, screenY - adjustedRadius))
+
+def drawLightningStrike(screen, cameraX, cameraY, disaster):
+    """Draws a lightning bolt at the disaster location when it strikes."""
+    if disaster and "strikeTime" in disaster and time.time()  < disaster["strikeTime"]:
+        screenX = int((disaster["x"] + cameraX))
+        screenY = int((disaster["y"] + cameraY))
+
+                # Lightning bolt shape (longer and more jagged)
+        points = [
+            (screenX, screenY - 100),  # Start higher up
+            (screenX + 15, screenY - 75),
+            (screenX - 10, screenY - 50),
+            (screenX + 20, screenY - 25),
+            (screenX - 15, screenY),
+            (screenX + 25, screenY + 25),
+            (screenX - 20, screenY + 50),
+            (screenX + 10, screenY + 75),
+            (screenX - 5, screenY + 100)  # Ends lower
+        ]
+        pygame.draw.polygon(screen, (255, 255, 0), points)  # Yellow lightning
+
+
+def applyDisasterDamage(placedItems, boatAndPirate, disaster, damage=50):
+    """Damages all items and pirates inside the disaster radius."""
+    if not disaster:
+        return placedItems, boatAndPirate  # No disaster active
+
+    disasterX, disasterY, radius = disaster["x"], disaster["y"], disaster["radius"]
+    
+    # Damage buildings
+    for item in placedItems:
+        itemX, itemY = item["item"].position
+        distance = math.sqrt((itemX - disasterX) ** 2 + (itemY - disasterY) ** 2)
+        if distance <= radius:
+            item["item"].showHealthBar = True
+            item["item"].healthBarStartTime = time.time()
+            item["item"].health -= damage
+
+    # Damage pirates
+    for boat, pirate in boatAndPirate:
+        if pirate is not None:
+            pirateX, pirateY = pirate.position
+            distance = math.sqrt((pirateX - disasterX) ** 2 + (pirateY - disasterY) ** 2)
+            if distance <= radius:
+                pirate.showHealthBar = True
+                pirate.healthBarStartTime = time.time()
+                pirate.health -= damage
+
+    return placedItems, boatAndPirate  # Return updated objects
+
+nextStrikeTime = None
+activeDisaster = None
+nextDisasterTime = time.time() + random.randint(240, 360)  # Set time for first disaster
+
+# Define button properties
+pickaxeButtonRect = pygame.Rect(20, 100, 50, 50)  # x, y, width, height
+destroyingMode = False  # Track if destroying mode is on
+
+def drawPickaxeButton(screen):
+    """Draws the pickaxe button on the left side of the screen."""
+    pygame.draw.rect(screen, (150, 75, 0), pickaxeButtonRect)  # Brown button
+    font = pygame.font.Font(None, 24)
+    text = font.render("Pickaxe", True, (255, 255, 255))
+    screen.blit(text, (pickaxeButtonRect.x + 10, pickaxeButtonRect.y + 10))
+
+def handlePickaxeClicks():
+    global destroyingMode
+    if pickaxeButtonRect.collidepoint(event.pos):
+        destroyingMode = not destroyingMode  # Toggle destroying mode
+
+def removeFarmFromGroup(farm, farmGroups):
+    for group in farmGroups:
+        if farm in group.farms:
+            group.removeFarm(farm)
+            break  # Exit after removing the farm from the group
+
+temp = False
+
 run = True
 while run:
-   # if not landPrinted:
-    #    print(landPositions)
-     #   landPrinted = True
-    #Handle inputs
+    currentTime = time.time()
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             run = False
@@ -1153,11 +1262,42 @@ while run:
                 adjustedMouseX, adjustedMouseY = adjustMouseCoordinates(mouseX, mouseY, cameraX, cameraY, zoomLevel)
                 print("mouse",adjustedMouseX, adjustedMouseY)
                 handleSpeedButtonClick(mouseX, mouseY)
+                handlePickaxeClicks()
                 showStatsMenu = ToggleStatsDisplay(mouseX, mouseY, showStatsMenu)
-                gold, placedItems, selectedItem, isDock, noOfItems, landPositions = handleMenuClicks(mouseX, mouseY, adjustedMouseX,
-                                            adjustedMouseY, gold, noOfItems, selectedItem, menuItems, isDock, islandWidth, islandHeight, gridSize, dockBoats, landPositions)
-                gold, selectedItem = toggleUpgradeBox(placedItems, adjustedMouseX, adjustedMouseY, gold, zoomLevel, cameraX, cameraY, selectedItem)    
+                if not destroyingMode:
+                    gold, placedItems, selectedItem, isDock, noOfItems, landPositions = handleMenuClicks(mouseX, mouseY, adjustedMouseX,
+                                                adjustedMouseY, gold, noOfItems, selectedItem, menuItems, isDock, islandWidth, islandHeight, gridSize, dockBoats, landPositions)
+                    gold, selectedItem = toggleUpgradeBox(placedItems, adjustedMouseX, adjustedMouseY, gold, zoomLevel, cameraX, cameraY, selectedItem)    
+                else:
+                    for item in placedItems:
+                        itemRect = item["item"].rect
+                        if itemRect.collidepoint(adjustedMouseX, adjustedMouseY):  # Check if clicked
+                            placedItems.remove(item)  # Remove the item if clicked
+                            if isinstance(item["item"], Farm):  # Check if the item is a Farm
+                                farm = item["item"]
+                                # Remove the farm from its group
+                                removeFarmFromGroup(farm, farmGroups)
+                            if isinstance(item["item"], Path):
+                                # Remove path from pathGrid by setting the relevant positions back to False
+                                for i in range(item["item"].rect.x, item["item"].rect.x + 21):
+                                    for j in range(item["item"].rect.y, item["item"].rect.y + 21):
+                                        pathGrid[(i, j)] = False  # Mark the positions as no longer a path
+                                for i in range(item["item"].rect.y, item["item"].rect.y + 21):
+                                    for j in range(item["item"].rect.x, item["item"].rect.x + 21):
+                                        pathGrid[(j, i)] = False  # Mark the positions as no longer a path
+                                # Check and remove any farmers currently on the path
+                                for farmer in placedItems[:]:
+                                    if isinstance(farmer["item"], Farmer):  # Check if the item is a Farmer
+                                        farmerPos = farmer["item"].position  # Get farmer position
+                                        # Check if farmer's position is within the path grid positions
+                                        for i in range(item["item"].rect.x, item["item"].rect.x + 21):
+                                            for j in range(item["item"].rect.y, item["item"].rect.y + 21):
+                                                if (i, j) == tuple(farmerPos):  # Farmer is on the path
+                                                    placedItems.remove(farmer)  # Remove the farmer
+                            break  # Exit after removing the item
     
+
+
     keys = pygame.key.get_pressed()
     cameraX, cameraY = cameraMovement(keys, cameraX, cameraY, speed)
 
@@ -1191,8 +1331,43 @@ while run:
     gold, boatAndPirate, population, floatingTexts, enemyAttack, piratesOnIsland = updatePirates(boatAndPirate, placedItems, gold, speedMultiplier, population, floatingTexts, enemyAttack, piratesOnIsland, landPositions) #updates pirates movements and payments when interacting with palcedItems
     watchTowerShoot(placedItems, enemyPirates)
 
+    if activeDisaster is None and currentTime >= nextDisasterTime:  # Check if it's time for a disaster
+        activeDisaster = triggerNaturalDisaster(landPositions, radius=150)
+        nextStrikeTime = activeDisaster["startTime"] + activeDisaster["warningTime"]  # Set first strike time
+
+        # Schedule the next disaster (4 to 6 minutes later)
+        nextDisasterTime = currentTime + random.randint(240, 360)
+    
+    # Draw warning circle before disaster hits
+    drawDisasterWarning(screen, cameraX, cameraY, activeDisaster)
+    
+
+    # Apply damage after the warning time
+    if activeDisaster and currentTime >= nextStrikeTime:
+        if activeDisaster["hitsRemaining"] >= 1:
+
+            activeDisaster["strikeTime"] = currentTime + 1
+
+            drawLightningStrike(screen, cameraX, cameraY, activeDisaster)
+
+            # Apply damage to items and pirates
+            placedItems, boatAndPirate = applyDisasterDamage(placedItems, boatAndPirate, activeDisaster, damage=50)
+
+            # Reduce the number of strikes left
+            activeDisaster["hitsRemaining"] = activeDisaster["hitsRemaining"] - 1
+            if activeDisaster["hitsRemaining"] > 0:
+                activeDisaster["x"], activeDisaster["y"] = random.choice(landPositions)
+                activeDisaster["startTime"] = time.time()
+                # Set the time for the next strike
+                nextStrikeTime = activeDisaster["startTime"] + activeDisaster["warningTime"]  # Next strike
+        else:
+            # Disaster is over
+            activeDisaster = None  # Reset disaster
+
+    
     drawUpgradeBox(placedItems, cameraX, cameraY, zoomLevel) #when upgrade box is clicked shows it above item 
     drawMenuItems(menuItems)
+    drawPickaxeButton(screen)
     updateDate()
     displayDate(screen, font)
     displayTimeSpeedSettings()
@@ -1201,7 +1376,7 @@ while run:
     drawStats(gold, population, White)
     drawStatsButton()
     drawStatsDisplay(showStatsMenu, profitLog, currentMonthIncome, currentMonthExpenses, currentMonthProfit, currentDate)
-    drawMouse(screen, gridSize, cameraX, cameraY)
+    drawMouse(screen, gridSize, cameraX, cameraY, destroyingMode)
 
     pygame.display.update()
     timer.tick(fps)
