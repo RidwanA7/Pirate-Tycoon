@@ -17,6 +17,9 @@ from enemy import Enemy, EnemyCaptain
 from watchTower import WatchTower
 from perlin_noise import PerlinNoise
 import numpy as np
+from woodChopperHut import WoodChopperHut, WoodChopper
+
+#new
 
 #Game Settings
 pygame.init()
@@ -95,6 +98,8 @@ grey = (128, 128, 128)
 
 #Game Variables
 gold = 7000000
+wood = 0
+
 population = 0
 noOfItems = 0
 placedItems = []
@@ -129,20 +134,82 @@ populationFont = pygame.font.SysFont(None, 36)
 #create menu
 menuHeight = 100
 menuPrices = {"small": 500, "medium": 150000, "large": 500000, "tent": 300, "restaurant": 1000, "farm": 1000, 'cookhouse': 1000, 'path': 10,
-              "farmer": 1000, "watchTower": 10000, "land": 100}
+              "farmer": 1000, "watchTower": 10000, "land": 100, "woodChopperHut": 1000}
 menuItems = [
     {"item": 'small', "rect": pygame.Rect(10, screenHeight - menuHeight + 10, 40, 40), "dock": True},
     {"item": 'medium',"rect": pygame.Rect(70, screenHeight - menuHeight + 10, 40, 40), "dock": True},
-    {"item": 'large', "rect": pygame.Rect(140, screenHeight - menuHeight + 10, 40, 40), "dock": True},
-    {"item": 'tent',"rect": pygame.Rect(210, screenHeight - menuHeight + 10, 40, 40), "dock": False },
-    {"item": 'restaurant', "rect": pygame.Rect(280, screenHeight - menuHeight + 10, 40, 40), "dock": False },
-    {"item": 'farm', "rect": pygame.Rect(350, screenHeight - menuHeight + 10, 40, 40), "dock": False },
-    {"item": 'cookhouse', "rect": pygame.Rect(420, screenHeight - menuHeight + 10, 40, 40), "dock": False },
-    {"item": 'path', "rect": pygame.Rect(490, screenHeight - menuHeight + 10, 40, 40), "dock": False },
-    {"item": 'farmer', "rect": pygame.Rect(560, screenHeight - menuHeight + 10, 40, 40), "dock": False },
-    {"item": 'watchTower', "rect": pygame.Rect(630, screenHeight - menuHeight + 10, 40, 40), "dock": False },  
-    {"item": 'land', "rect": pygame.Rect(700, screenHeight - menuHeight + 10, 40, 40), "dock": False },
+    {"item": 'large', "rect": pygame.Rect(130, screenHeight - menuHeight + 10, 40, 40), "dock": True},
+    {"item": 'tent',"rect": pygame.Rect(190, screenHeight - menuHeight + 10, 40, 40), "dock": False },
+    {"item": 'restaurant', "rect": pygame.Rect(250, screenHeight - menuHeight + 10, 40, 40), "dock": False },
+    {"item": 'farm', "rect": pygame.Rect(310, screenHeight - menuHeight + 10, 40, 40), "dock": False },
+    {"item": 'cookhouse', "rect": pygame.Rect(370, screenHeight - menuHeight + 10, 40, 40), "dock": False },
+    {"item": 'path', "rect": pygame.Rect(430, screenHeight - menuHeight + 10, 40, 40), "dock": False },
+    {"item": 'farmer', "rect": pygame.Rect(490, screenHeight - menuHeight + 10, 40, 40), "dock": False },
+    {"item": 'watchTower', "rect": pygame.Rect(550, screenHeight - menuHeight + 10, 40, 40), "dock": False },  
+    {"item": 'land', "rect": pygame.Rect(610, screenHeight - menuHeight + 10, 40, 40), "dock": False },
+    {"item": 'woodChopperHut', "rect": pygame.Rect(670, screenHeight - menuHeight + 10, 40, 40), "dock": False },
 ]
+
+def generateTrees(landPositions, numTrees):
+    treePositions = set()
+    while len(treePositions) < numTrees:
+        treePos = random.choice(landPositions)  # Pick a random land tile
+        treePositions.add(treePos)
+    return list(treePositions)  # Convert to list before returning
+
+ISLAND_SIZE = 300  # Base square size
+EDGE_VARIATION = 20  # How much edges can extend/shrink
+GREEN = (34, 139, 34)
+islandArea = 5000
+
+def generateIsland(WIDTH, HEIGHT, scale=80, threshold=0, stepSize=20):
+    """Creates a large, single green island using Perlin noise with a circular mask."""
+    island_surface = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+    island_surface.fill((0,0,0,0))  # Default to water
+
+    noise = PerlinNoise(octaves=3, seed=random.randint(0, 10000))
+
+    center_x, center_y = WIDTH // 2, HEIGHT // 2
+    max_distance = min(WIDTH, HEIGHT) // 2  # Radius of the island
+
+    land_positions = []
+
+    for y in range(0, HEIGHT, stepSize):
+        for x in range(0, WIDTH, stepSize):
+            nx = x / scale
+            ny = y / scale
+            noise_value = noise([nx, ny])  # Get Perlin noise value
+
+            # Circular mask: distance from center determines land probability
+            distance = math.sqrt((x - center_x) ** 2 + (y - center_y) ** 2)
+            falloff = max(0, 1 - (distance / max_distance) ** 2)  # Quadratic falloff
+
+            # Combine Perlin noise with falloff
+            final_value = noise_value * falloff
+
+            if final_value > threshold:
+                pygame.draw.rect(island_surface, GREEN, (x, y, stepSize, stepSize))
+                land_positions.append((x, y))  # Store land positions
+
+    # Step 2: Fill in the gaps by expanding land
+    for _ in range(3):  # Expand land a few times
+        new_land_positions = land_positions.copy()  # Copy existing land
+        for x, y in land_positions:
+            for dx, dy in [(-stepSize, 0), (stepSize, 0), (0, -stepSize), (0, stepSize)]:
+                new_x, new_y = x + dx, y + dy
+                if 0 <= new_x < WIDTH and 0 <= new_y < HEIGHT:
+                    new_land_positions.append((new_x, new_y))  # Expand land
+                    pygame.draw.rect(island_surface, GREEN, (new_x, new_y, stepSize, stepSize))
+        land_positions = new_land_positions    
+    return island_surface, land_positions
+
+island, landPositions = generateIsland(1600, 800)
+for x in range(len(landPositions)):
+    landPositions[x] = (landPositions[x][0]//20 * 20, landPositions[x][1]//20 * 20)
+lastGoldReductionTime = time.time()
+
+numTrees = 15
+treePositions = generateTrees(landPositions, numTrees)
 
 
 def updateExpenses(amount):
@@ -407,6 +474,8 @@ def handleMenuClicks(mouseX, mouseY, adjustedMouseX, adjustedMouseY, gold, noOfI
                             menuPrices["farmer"] += 50000
                         if selectedItem == 'watchTower':
                             SelectedItem = WatchTower([adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize], menuPrices[selectedItem])
+                        if selectedItem == 'woodChopperHut':
+                            SelectedItem = WoodChopperHut([adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize], menuPrices[selectedItem], treePositions)
                         placedItems.append(
                             {"item": SelectedItem, "pos": (adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize), "orientation": "normal"})
                         floatingTexts.append({"text": f"-{menuPrices[selectedItem]}$", "x": adjustedMouseX, "y": adjustedMouseY, "expiration": currentTime + 1})
@@ -700,6 +769,9 @@ def drawStats(gold, population, White):
     # Display gold
     goldText = font.render(f"Gold: {gold}", True, White)
     screen.blit(goldText, (10, 10))
+
+    woodText = font.render(f"Wood: {wood}", True, White)
+    screen.blit(woodText, (10, 30))  # Positioned below gold
 
     # Display population count
     populationText = populationFont.render(f"Population: {population}", True, White)
@@ -1089,56 +1161,7 @@ def randomPirateAttack(gold, lastAttackCheck, enemyAttack):
     else:
         return False, lastAttackCheck
     
-ISLAND_SIZE = 300  # Base square size
-EDGE_VARIATION = 20  # How much edges can extend/shrink
-GREEN = (34, 139, 34)
-islandArea = 5000
 
-def generateIsland(WIDTH, HEIGHT, scale=80, threshold=0, stepSize=20):
-    """Creates a large, single green island using Perlin noise with a circular mask."""
-    island_surface = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-    island_surface.fill((0,0,0,0))  # Default to water
-
-    noise = PerlinNoise(octaves=3, seed=random.randint(0, 10000))
-
-    center_x, center_y = WIDTH // 2, HEIGHT // 2
-    max_distance = min(WIDTH, HEIGHT) // 2  # Radius of the island
-
-    land_positions = []
-
-    for y in range(0, HEIGHT, stepSize):
-        for x in range(0, WIDTH, stepSize):
-            nx = x / scale
-            ny = y / scale
-            noise_value = noise([nx, ny])  # Get Perlin noise value
-
-            # Circular mask: distance from center determines land probability
-            distance = math.sqrt((x - center_x) ** 2 + (y - center_y) ** 2)
-            falloff = max(0, 1 - (distance / max_distance) ** 2)  # Quadratic falloff
-
-            # Combine Perlin noise with falloff
-            final_value = noise_value * falloff
-
-            if final_value > threshold:
-                pygame.draw.rect(island_surface, GREEN, (x, y, stepSize, stepSize))
-                land_positions.append((x, y))  # Store land positions
-
-    # Step 2: Fill in the gaps by expanding land
-    for _ in range(3):  # Expand land a few times
-        new_land_positions = land_positions.copy()  # Copy existing land
-        for x, y in land_positions:
-            for dx, dy in [(-stepSize, 0), (stepSize, 0), (0, -stepSize), (0, stepSize)]:
-                new_x, new_y = x + dx, y + dy
-                if 0 <= new_x < WIDTH and 0 <= new_y < HEIGHT:
-                    new_land_positions.append((new_x, new_y))  # Expand land
-                    pygame.draw.rect(island_surface, GREEN, (new_x, new_y, stepSize, stepSize))
-        land_positions = new_land_positions    
-    return island_surface, land_positions
-
-island, landPositions = generateIsland(1600, 800)
-for x in range(len(landPositions)):
-    landPositions[x] = (landPositions[x][0]//20 * 20, landPositions[x][1]//20 * 20)
-lastGoldReductionTime = time.time()
 
 def triggerNaturalDisaster(landPositions, radius=200, warningTime=3):
     """Selects a random land position and starts a disaster countdown."""
@@ -1245,6 +1268,28 @@ def removeFarmFromGroup(farm, farmGroups):
             group.removeFarm(farm)
             break  # Exit after removing the farm from the group
 
+def drawTrees(screen, treePositions, cameraX, cameraY):
+    treeColor = (139, 69, 19)  # Green color for trees
+    treeImage = pygame.image.load(r"C:\Users\Study\Pirate Tycoon\images\grassv2.png")  # Load tree image
+    treeImage = pygame.transform.scale(treeImage, (20, 20))  # Resize to 20x20 pixels
+    for tree in treePositions:
+         screen.blit(treeImage, (tree[0] + cameraX, tree[1] + cameraY))  # Draw the tree
+
+def updateWoodChopperHuts(screen, cameraX, cameraY, placedItems):
+    for woodChopperHuts in placedItems:
+        if isinstance(woodChopperHuts["item"], WoodChopperHut):
+            woodChopperHut = woodChopperHuts["item"]
+            woodChopperHut.update()
+            woodChopperHut.draw(screen, cameraX, cameraY)
+
+def collectWood(adjustedMouseX, adjustedMouseY, placedItems, wood):
+    for hut in placedItems:
+        if isinstance(hut["item"], WoodChopperHut) and hut["item"].rect.collidepoint(adjustedMouseX, adjustedMouseY):
+                print("Pressed")
+                wood += hut["item"].woodCount
+                hut["item"].woodCount = 0
+    return wood
+
 temp = False
 
 run = True
@@ -1268,6 +1313,7 @@ while run:
                     gold, placedItems, selectedItem, isDock, noOfItems, landPositions = handleMenuClicks(mouseX, mouseY, adjustedMouseX,
                                                 adjustedMouseY, gold, noOfItems, selectedItem, menuItems, isDock, islandWidth, islandHeight, gridSize, dockBoats, landPositions)
                     gold, selectedItem = toggleUpgradeBox(placedItems, adjustedMouseX, adjustedMouseY, gold, zoomLevel, cameraX, cameraY, selectedItem)    
+                    wood = collectWood(adjustedMouseX, adjustedMouseY, placedItems, wood)
                 else:
                     for item in placedItems:
                         itemRect = item["item"].rect
@@ -1304,6 +1350,8 @@ while run:
     screen.fill((0, 105, 148))  # Fill screen with water color
     # Draw the island surface to the screen
     screen.blit(island, (cameraX, cameraY))
+
+    drawTrees(screen, treePositions, cameraX, cameraY)  # Draw trees
     
     noOfItems, boatAndPirate, population, enemiesArriving, enemyAttack, piratesSpawned = spawnBoat(noOfItems, boatAndPirate, population, cameraX, cameraY, enemiesArriving, enemyAttack, piratesSpawned) #moves boat towards entrance
     drawPlacedItems(placedItems, cameraX, cameraY, zoomLevel)
@@ -1330,6 +1378,8 @@ while run:
     enemyAttack, piratesSpawned, piratesOnIsland = enemyPiratesSpawn(enemyPirates,(810//20 * 20, 750// 20 * 20), enemyAttack, piratesSpawned, piratesOnIsland, gold)
     gold, boatAndPirate, population, floatingTexts, enemyAttack, piratesOnIsland = updatePirates(boatAndPirate, placedItems, gold, speedMultiplier, population, floatingTexts, enemyAttack, piratesOnIsland, landPositions) #updates pirates movements and payments when interacting with palcedItems
     watchTowerShoot(placedItems, enemyPirates)
+
+    updateWoodChopperHuts(screen, cameraX, cameraY, placedItems)
 
     if activeDisaster is None and currentTime >= nextDisasterTime:  # Check if it's time for a disaster
         activeDisaster = triggerNaturalDisaster(landPositions, radius=150)
