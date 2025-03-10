@@ -1,0 +1,105 @@
+import pygame
+from buildings import Building
+import math
+
+#new
+
+class WoodChopper():
+
+    assigned_trees = set()  # Shared set to track trees currently being chopped
+
+    def __init__(self, position, trees, hutPos, hut):
+        self.image = pygame.image.load(r"C:\Users\Study\Pirate Tycoon\images\woodChopper.png")
+        self.image = pygame.transform.scale(self.image, (20, 20))
+        self.rect = self.image.get_rect(center=position)
+        self.speed = 2
+        self.target_tree = self.find_nearest_tree(trees)
+        self.trees = trees
+        self.state = "moving_to_tree"
+        self.hut = hutPos
+        self.hutObject = hut
+
+    def find_nearest_tree(self, trees):
+        available_trees = [tree for tree in trees if tree not in WoodChopper.assigned_trees]
+        if not available_trees:
+            return None
+
+        tree = min(available_trees, key=lambda tree: math.dist(self.rect.center, tree))
+        WoodChopper.assigned_trees.add(tree)  # Mark this tree as being chopped
+    
+        return tree
+
+    def move(self):
+        """Move towards the target (tree or hut)."""
+        if self.state == "moving_to_tree" and self.target_tree:
+            target_x, target_y = self.target_tree
+        else:
+            target_x, target_y = self.hut  # Return to the hut after cutting the tree
+
+        dx, dy = target_x - self.rect.x, target_y - self.rect.y
+        distance = math.sqrt(dx**2 + dy**2)
+
+        if distance > 1:  # Stop when very close
+            self.rect.x += (dx / distance) * self.speed
+            self.rect.y += (dy / distance) * self.speed
+        else:
+            if self.state == "moving_to_tree":
+                self.destroy_tree()
+    
+    def destroy_tree(self):
+        """Remove the tree from the list and return to the hut."""
+        if self.target_tree in self.trees:
+            self.trees.remove(self.target_tree)
+        self.target_tree = None
+        self.state = "returning_to_hut"
+
+    def update(self):
+        """Update movement logic."""
+        if self.state == "returning_to_hut" and math.dist(self.rect.center, self.hut) < 15:
+            self.hutObject.increaseWood()  # Increase wood count when returning
+            self.target_tree = self.find_nearest_tree(self.trees)  # Find a new tree when back at the hut
+            if self.target_tree:
+                self.state = "moving_to_tree"
+            else:
+                self.state = "idle"
+        if self.state == "idle":
+            self.target_tree = self.find_nearest_tree(self.trees)
+            if self.target_tree:
+                self.state = "moving_to_tree"
+        self.move()
+        
+
+class WoodChopperHut(Building):
+    def __init__(self, position, price, trees):
+        super().__init__(position, price)
+        self.image = pygame.image.load(r"C:\Users\Study\Pirate Tycoon\images\woodChopperHut.png")
+        self.image = pygame.transform.scale(self.image, (20, 20))
+        self.rect = self.image.get_rect(topleft=position)
+        self.label = "woodChopperHut"
+        self.hutPos = position
+        self.woodCount = 0
+        self.font = pygame.font.Font(None, 24)  # Font for displaying wood count
+
+        # Spawn two woodchoppers at the hut
+        self.woodchoppers = [WoodChopper(position, trees, self.hutPos, self) for _ in range(2)]
+
+    def increaseWood(self):
+        """Increase wood count when a chopper returns with wood."""
+        self.woodCount += 1  # Increase wood count when a chopper returns
+
+    def update(self):
+        """Update woodchoppers' movement."""
+        for chopper in self.woodchoppers:
+            chopper.update()
+
+    def draw(self, screen, cameraX, cameraY):
+        """Draw the hut and woodchoppers."""
+        screen.blit(self.image,(self.rect.x + cameraX, self.rect.y + cameraY))
+        # Draw wood count above the hut
+        woodText = self.font.render(f"Wood: {self.woodCount}", True, (255, 255, 255))
+        screen.blit(woodText, (self.rect.x + cameraX, self.rect.y + cameraY - 20))
+
+        for chopper in self.woodchoppers:
+            screen.blit(chopper.image, (chopper.rect.x + cameraX, chopper.rect.y + cameraY))
+
+        
