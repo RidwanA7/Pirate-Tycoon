@@ -5,6 +5,8 @@ from restuarant import Restaurant
 import math
 from enemy import Node, calculate_path, move_along_path
 
+#new
+
 class Pirate:
     def __init__(self, position, payment):
         self.position = [position[0]//20 * 20, position[1]//20 * 20]
@@ -40,7 +42,7 @@ class Pirate:
     def updateSpeed(self, speedMultiplier):
         self.speed = self.baseSpeed * speedMultiplier
 
-    def moveTowards(self, targetPosition, landPositions, gridSize=20):
+    def moveTowards(self, targetPosition, landPositions, treePositions, gridSize=20):
         if self.enemy:
             self.targetPos = (self.enemy.rect.x//gridSize * gridSize, self.enemy.rect.y//gridSize * gridSize)  #If moving towards an enemy
         else:
@@ -52,11 +54,11 @@ class Pirate:
         self.targetPos != getattr(self, 'last_target', None):
             if currentTime - getattr(self, 'lastTime', 0) > 5:
                 self.lastTime = currentTime
-                print("New path needed, pirate ")
-                if hasattr(self, 'path'):
-                    print("piratePos:", (self.rect.x//gridSize * gridSize, self.rect.y//gridSize * gridSize), "targetPos:", self.targetPos, self.path)
+    
+    
+             
                 start_pos = (self.rect.x//gridSize * gridSize, self.rect.y//gridSize * gridSize)
-                self.path = calculate_path(start_pos, self.targetPos, landPositions, gridSize) 
+                self.path = calculate_path(start_pos, self.targetPos, landPositions, treePositions, gridSize) 
                 self.last_target = self.targetPos
         
         if self.path:
@@ -130,14 +132,14 @@ class Pirate:
                 self.payment = 0  # Not enough food
         return self.payment
 
-    def move(self, landPositions, gridSize=20):
+    def move(self, landPositions, treePositions, gridSize=20):
         # Calculate the potential new position
         new_position = [self.position[0] + self.direction[0] * self.speed, 
                     self.position[1] + self.direction[1] * self.speed]
         gridPosition = (new_position[0] // gridSize * gridSize, new_position[1] // gridSize * gridSize)
     
         # Ensure the new position is within landPositions
-        if tuple(gridPosition) in landPositions:
+        if tuple(gridPosition) in landPositions and tuple(gridPosition) not in treePositions:
             self.position = new_position
             self.rect.centerx, self.rect.centery = self.position
         # Randomly change direction occasionally
@@ -203,12 +205,12 @@ class Pirate:
             else:
                 return False
     
-    def update(self,speedMultiplier, placedItems, landPositions):
+    def update(self,speedMultiplier, placedItems, landPositions, treePositions):
         self.payment = 0
         self.updateStates()
         if self.state == "exploring":
             self.atItem = False
-            self.move(landPositions)
+            self.move(landPositions, treePositions)
         elif self.state == "hungry":
             restaurantPosition, itemObject = self.findClosestObject("restaurant", placedItems)
             if itemObject is None:
@@ -225,7 +227,7 @@ class Pirate:
                     self.last_target = None
                     del self.path
                 else:
-                    self.moveTowards(restaurantPosition, landPositions)
+                    self.moveTowards(restaurantPosition, landPositions, treePositions)
 
         elif self.state == "tired":
             tentPosition, itemObject = self.findClosestObject("tent", placedItems)
@@ -241,7 +243,7 @@ class Pirate:
                 if self.isAtObject(tentPosition):
                     self.payment = self.pay("Tent", itemObject, speedMultiplier)
                 else:
-                    self.moveTowards(tentPosition, landPositions)
+                    self.moveTowards(tentPosition, landPositions, treePositions)
                 if self.payment>0:
                     self.last_target = None
                     del self.path
