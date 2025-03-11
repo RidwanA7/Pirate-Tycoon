@@ -336,7 +336,7 @@ def canPlaceDock(gridPosition, landPositions, orientation, gridSize=20, maxDista
     return True  # Dock placement is valid if no land is in front
             
 
-def handleMenuClicks(mouseX, mouseY, adjustedMouseX, adjustedMouseY, gold, noOfItems, selectedItem, menuItems, isDock, islandWidth, islandHeight, gridSize, dockBoats, landPositions):
+def handleMenuClicks(mouseX, mouseY, adjustedMouseX, adjustedMouseY, gold, noOfItems, selectedItem, menuItems, isDock, islandWidth, islandHeight, gridSize, dockBoats, landPositions, wood):
     # Check if the mouse is clicked on a menu item
     for label, rect in speedButtons.items():
         if rect.collidepoint(mouseX, mouseY):
@@ -403,43 +403,53 @@ def handleMenuClicks(mouseX, mouseY, adjustedMouseX, adjustedMouseY, gold, noOfI
             if gold >= menuPrices[selectedItem]:
                 currentTime = time.time()
                 if isDock:
-                    x, y = gridPosition
+                    if selectedItem == 'small':
+                        woodCost = 1
+                    elif selectedItem == 'medium':
+                        woodCost = 2
+                    elif selectedItem == 'large':
+                        woodCost = 3
+                    if wood >= woodCost:
+                        wood -= woodCost
+                        x, y = gridPosition
 
-                    if (x - gridSize, y) not in landPositions and gridPosition in landPositions and canPlaceDock(gridPosition, landPositions, "left"):
-                        dock = Dock(selectedItem, [x, y], "left", menuPrices[selectedItem])
-                        dockBoats.append((Boat([x, y], "left"), dock))
-                        placedItems.append({"item": dock, "pos": (x, y), "orientation": "left"})
-                        floatingTexts.append({"text": f"-{menuPrices[selectedItem]}$", "x": adjustedMouseX, "y": adjustedMouseY, "expiration": currentTime + 1})
-                        gold -= menuPrices[selectedItem]
-                        noOfItems += 1
-                        updateExpenses(menuPrices[selectedItem])
-                    
-                    elif (x + gridSize, y) not in landPositions and gridPosition in landPositions and canPlaceDock(gridPosition, landPositions, "right"):
-                        dock = Dock(selectedItem, [x, y], "right", menuPrices[selectedItem])
-                        dockBoats.append((Boat([x, y], "right"), dock))
-                        placedItems.append({"item": dock, "pos": (x, y), "orientation": "right"})
-                        floatingTexts.append({"text": f"-{menuPrices[selectedItem]}$", "x": adjustedMouseX, "y": adjustedMouseY, "expiration": currentTime + 1})
-                        gold -= menuPrices[selectedItem]
-                        noOfItems += 1
-                        updateExpenses(menuPrices[selectedItem])
+                        if (x - gridSize, y) not in landPositions and gridPosition in landPositions and canPlaceDock(gridPosition, landPositions, "left"):
+                            dock = Dock(selectedItem, [x, y], "left", menuPrices[selectedItem])
+                            dockBoats.append((Boat([x, y], "left"), dock))
+                            placedItems.append({"item": dock, "pos": (x, y), "orientation": "left"})
+                            floatingTexts.append({"text": f"-{menuPrices[selectedItem]}$", "x": adjustedMouseX, "y": adjustedMouseY, "expiration": currentTime + 1})
+                            gold -= menuPrices[selectedItem]
+                            noOfItems += 1
+                            updateExpenses(menuPrices[selectedItem])
+                        
+                        elif (x + gridSize, y) not in landPositions and gridPosition in landPositions and canPlaceDock(gridPosition, landPositions, "right"):
+                            dock = Dock(selectedItem, [x, y], "right", menuPrices[selectedItem])
+                            dockBoats.append((Boat([x, y], "right"), dock))
+                            placedItems.append({"item": dock, "pos": (x, y), "orientation": "right"})
+                            floatingTexts.append({"text": f"-{menuPrices[selectedItem]}$", "x": adjustedMouseX, "y": adjustedMouseY, "expiration": currentTime + 1})
+                            gold -= menuPrices[selectedItem]
+                            noOfItems += 1
+                            updateExpenses(menuPrices[selectedItem])
 
-                    elif (x, y - gridSize) not in landPositions and gridPosition in landPositions and canPlaceDock(gridPosition, landPositions, "top"):
-                        dock = Dock(selectedItem, [x, y], "top", menuPrices[selectedItem])
-                        dockBoats.append((Boat([x, y], "top"), dock))
-                        placedItems.append({"item": dock, "pos": (x, y), "orientation": "top"})
-                        floatingTexts.append({"text": f"-{menuPrices[selectedItem]}$", "x": adjustedMouseX, "y": adjustedMouseY, "expiration": currentTime + 1})
-                        gold -= menuPrices[selectedItem]
-                        noOfItems += 1
-                        updateExpenses(menuPrices[selectedItem])
+                        elif (x, y - gridSize) not in landPositions and gridPosition in landPositions and canPlaceDock(gridPosition, landPositions, "top"):
+                            dock = Dock(selectedItem, [x, y], "top", menuPrices[selectedItem])
+                            dockBoats.append((Boat([x, y], "top"), dock))
+                            placedItems.append({"item": dock, "pos": (x, y), "orientation": "top"})
+                            floatingTexts.append({"text": f"-{menuPrices[selectedItem]}$", "x": adjustedMouseX, "y": adjustedMouseY, "expiration": currentTime + 1})
+                            gold -= menuPrices[selectedItem]
+                            noOfItems += 1
+                            updateExpenses(menuPrices[selectedItem])
 
-                    elif (x, y + gridSize) not in landPositions and gridPosition in landPositions and canPlaceDock(gridPosition, landPositions, "bottom"):
-                        dock = Dock(selectedItem, [x, y], "bottom", menuPrices[selectedItem])
-                        dockBoats.append((Boat([x, y], "bottom"), dock))
-                        placedItems.append({"item": dock, "pos": (x, y), "orientation": "bottom"})
-                        floatingTexts.append({"text": f"-{menuPrices[selectedItem]}$", "x": adjustedMouseX, "y": adjustedMouseY, "expiration": currentTime + 1})
-                        gold -= menuPrices[selectedItem]
-                        noOfItems += 1
-                        updateExpenses(menuPrices[selectedItem])
+                        elif (x, y + gridSize) not in landPositions and gridPosition in landPositions and canPlaceDock(gridPosition, landPositions, "bottom"):
+                            dock = Dock(selectedItem, [x, y], "bottom", menuPrices[selectedItem])
+                            dockBoats.append((Boat([x, y], "bottom"), dock))
+                            placedItems.append({"item": dock, "pos": (x, y), "orientation": "bottom"})
+                            floatingTexts.append({"text": f"-{menuPrices[selectedItem]}$", "x": adjustedMouseX, "y": adjustedMouseY, "expiration": currentTime + 1})
+                            gold -= menuPrices[selectedItem]
+                            noOfItems += 1
+                            updateExpenses(menuPrices[selectedItem])
+                    else:
+                        print("Not enough wood")
                 else:
                     if gridPosition in landPositions and selectedItem != "land":
                         gold -= menuPrices[selectedItem]
@@ -479,7 +489,7 @@ def handleMenuClicks(mouseX, mouseY, adjustedMouseX, adjustedMouseY, gold, noOfI
                         placedItems.append(
                             {"item": SelectedItem, "pos": (adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize), "orientation": "normal"})
                         floatingTexts.append({"text": f"-{menuPrices[selectedItem]}$", "x": adjustedMouseX, "y": adjustedMouseY, "expiration": currentTime + 1})
-    return gold, placedItems, selectedItem, isDock, noOfItems, landPositions
+    return gold, placedItems, selectedItem, isDock, noOfItems, landPositions, wood
 
 def drawStatsButton():
     # Draw the button
@@ -764,6 +774,15 @@ def drawMenuItems(menuItems):
         priceLabel = dockFont.render(f"${menuPrices[item['item']]}", True, White)
         priceLabelRect = priceLabel.get_rect(center=(item["rect"].centerx, item["rect"].top + 10))
         screen.blit(priceLabel, priceLabelRect)
+        if item["dock"] == True:
+            if item["item"] == "small":
+                woodText = dockFont.render(f"Wood: {1}", True, White)
+            elif item["item"] == "medium":
+                woodText = dockFont.render(f"Wood: {2}", True, White)
+            elif item["item"] == "large":
+                woodText = dockFont.render(f"Wood: {3}", True, White)
+            woodTextRect = woodText.get_rect(center=(item["rect"].centerx, item["rect"].top + 30))
+            screen.blit(woodText, woodTextRect)
 
 def drawStats(gold, population, White):
     # Display gold
@@ -863,9 +882,9 @@ def findClosestObject(placedItems, pirate):
 def findNearestItem():
     pass
 
-def piratePayment(pirate, gold,speedMultiplier, landPositions):
+def piratePayment(pirate, gold,speedMultiplier, landPositions, treePositions):
     currentTime = time.time()
-    payment = pirate.update(speedMultiplier, placedItems, landPositions)
+    payment = pirate.update(speedMultiplier, placedItems, landPositions, treePositions)
     if payment > 0:
         gold += payment
         updateIncome(payment)
@@ -883,7 +902,7 @@ def checkSatisfaction(boatAndPirate, population, gold, floatingTexts):
                 updateExpenses(100)
     return population, gold, boatAndPirate, floatingTexts
 
-def updatePirates(boatAndPirate, placedItems, gold, speedMutiplier, population, floatingTexts, enemyAttack, piratesOnIsland, landPositions):
+def updatePirates(boatAndPirate, placedItems, gold, speedMutiplier, population, floatingTexts, enemyAttack, piratesOnIsland, landPositions, treePositions):
     for boat,pirate in boatAndPirate:
         if pirate is not None:
             if pirate.health <= 0:
@@ -903,9 +922,9 @@ def updatePirates(boatAndPirate, placedItems, gold, speedMutiplier, population, 
                 if pirate.isAtObject([pirate.enemy.rect.x, pirate.enemy.rect.y]):
                     pirate.attack()
                 else:
-                    pirate.moveTowards([pirate.enemy.rect.x, pirate.enemy.rect.y], landPositions)
+                    pirate.moveTowards([pirate.enemy.rect.x, pirate.enemy.rect.y], landPositions, treePositions)
             else:
-                gold, boatAndPirate  = piratePayment(pirate, gold, speedMultiplier, landPositions)
+                gold, boatAndPirate  = piratePayment(pirate, gold, speedMultiplier, landPositions, treePositions)
         
     for enemy in enemyPirates:
         if enemy.health <= 0:
@@ -919,11 +938,11 @@ def updatePirates(boatAndPirate, placedItems, gold, speedMutiplier, population, 
             enemy.findClosestObject(placedItems)
             if not enemy.foundTarget:
                 enemy.findClosestPirate(boatAndPirate)
-            enemy.moveAround(landPositions)
+            enemy.moveAround(landPositions, treePositions)
         elif enemy.atTarget():
             enemy.attack()
         elif enemy.foundTarget:
-            enemy.moveTowards(landPositions)
+            enemy.moveTowards(landPositions, treePositions)
     
     if len(enemyPirates) == 0 and piratesOnIsland:
         enemyAttack = False
@@ -1160,8 +1179,6 @@ def randomPirateAttack(gold, lastAttackCheck, enemyAttack):
             return False, lastAttackCheck
     else:
         return False, lastAttackCheck
-    
-
 
 def triggerNaturalDisaster(landPositions, radius=200, warningTime=3):
     """Selects a random land position and starts a disaster countdown."""
@@ -1290,6 +1307,25 @@ def collectWood(adjustedMouseX, adjustedMouseY, placedItems, wood):
                 hut["item"].woodCount = 0
     return wood
 
+def growTrees(landPositions, treePositions, lastGrowTime):
+
+    if time.time() - lastGrowTime > 5:  # Check every 5 seconds
+        if len(treePositions) < 15:
+
+            availablePositions = [pos for pos in landPositions if pos not in treePositions]
+
+            if availablePositions:
+                randomPos = random.choice(availablePositions)
+
+                # Apply 10% chance of tree growth at this position
+                if random.random() < 0.1:  # 10% chance of tree growth
+                    treePositions.append(randomPos)
+        lastGrowTime = time.time()
+
+    return treePositions, lastGrowTime
+
+lastGrowTime = time.time()  # Track last tree growth time
+
 temp = False
 
 run = True
@@ -1310,8 +1346,8 @@ while run:
                 handlePickaxeClicks()
                 showStatsMenu = ToggleStatsDisplay(mouseX, mouseY, showStatsMenu)
                 if not destroyingMode:
-                    gold, placedItems, selectedItem, isDock, noOfItems, landPositions = handleMenuClicks(mouseX, mouseY, adjustedMouseX,
-                                                adjustedMouseY, gold, noOfItems, selectedItem, menuItems, isDock, islandWidth, islandHeight, gridSize, dockBoats, landPositions)
+                    gold, placedItems, selectedItem, isDock, noOfItems, landPositions, wood = handleMenuClicks(mouseX, mouseY, adjustedMouseX,
+                                                adjustedMouseY, gold, noOfItems, selectedItem, menuItems, isDock, islandWidth, islandHeight, gridSize, dockBoats, landPositions, wood)
                     gold, selectedItem = toggleUpgradeBox(placedItems, adjustedMouseX, adjustedMouseY, gold, zoomLevel, cameraX, cameraY, selectedItem)    
                     wood = collectWood(adjustedMouseX, adjustedMouseY, placedItems, wood)
                 else:
@@ -1376,7 +1412,7 @@ while run:
             gold -= 10
     enemyAttack, shipAdded = enemyArriveAtIsland(enemyShips, shipAdded, enemyAttack)
     enemyAttack, piratesSpawned, piratesOnIsland = enemyPiratesSpawn(enemyPirates,(810//20 * 20, 750// 20 * 20), enemyAttack, piratesSpawned, piratesOnIsland, gold)
-    gold, boatAndPirate, population, floatingTexts, enemyAttack, piratesOnIsland = updatePirates(boatAndPirate, placedItems, gold, speedMultiplier, population, floatingTexts, enemyAttack, piratesOnIsland, landPositions) #updates pirates movements and payments when interacting with palcedItems
+    gold, boatAndPirate, population, floatingTexts, enemyAttack, piratesOnIsland = updatePirates(boatAndPirate, placedItems, gold, speedMultiplier, population, floatingTexts, enemyAttack, piratesOnIsland, landPositions, treePositions) #updates pirates movements and payments when interacting with palcedItems
     watchTowerShoot(placedItems, enemyPirates)
 
     updateWoodChopperHuts(screen, cameraX, cameraY, placedItems)
@@ -1413,7 +1449,8 @@ while run:
         else:
             # Disaster is over
             activeDisaster = None  # Reset disaster
-
+    
+    treePositions, lastGrowTIme = growTrees(landPositions, treePositions, lastGrowTime)
     
     drawUpgradeBox(placedItems, cameraX, cameraY, zoomLevel) #when upgrade box is clicked shows it above item 
     drawMenuItems(menuItems)
@@ -1427,6 +1464,10 @@ while run:
     drawStatsButton()
     drawStatsDisplay(showStatsMenu, profitLog, currentMonthIncome, currentMonthExpenses, currentMonthProfit, currentDate)
     drawMouse(screen, gridSize, cameraX, cameraY, destroyingMode)
+
+    if not temp:
+        print(treePositions)
+        temp = True
 
     pygame.display.update()
     timer.tick(fps)
