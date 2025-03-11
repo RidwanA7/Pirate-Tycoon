@@ -5,6 +5,7 @@ from farmer import Farmer
 from path import Path, Land
 import math
 
+#new
 
 class Node:
     def __init__(self, pos, g_cost=float('inf'), h_cost=0):
@@ -14,7 +15,7 @@ class Node:
         self.f_cost = g_cost + h_cost  # Total cost
         self.parent = None
 
-def calculate_path(start_pos, target_pos, landPositions, gridSize):
+def calculate_path(start_pos, target_pos, landPositions, treePositions, gridSize):
     def get_neighbors(pos):
         x, y = pos
         neighbors = [
@@ -23,18 +24,18 @@ def calculate_path(start_pos, target_pos, landPositions, gridSize):
             (x, y + gridSize),  # down
             (x, y - gridSize)   # up
         ]
-        return [n for n in neighbors if n in landPositions]
+        return [n for n in neighbors if n in landPositions and n not in treePositions]
     
     def heuristic(pos, target):
         return abs(pos[0] - target[0]) + abs(pos[1] - target[1])
     
     def find_nearest_land(pos):
         """Find the closest land position to the given pos."""
-        if pos in landPositions:
+        if pos in landPositions and pos not in treePositions:
             return pos  # Target is already valid
 
         # Find nearest valid land tile
-        nearest_land = min(landPositions, key=lambda p: heuristic(pos, p))
+        nearest_land = min((p for p in landPositions if p not in treePositions), key=lambda p: heuristic(pos, p))
         return nearest_land
     
     start_grid = (start_pos[0], start_pos[1])
@@ -150,7 +151,7 @@ class Enemy(pygame.sprite.Sprite):
                 self.target = targetObject
                 self.target.beingAttacked = True
                     
-    def moveTowards(self, landPositions, gridSize=20):
+    def moveTowards(self, landPositions, treePositions, gridSize=20):
         if self.target:
             centerx, centery = self.target.rect.center
             self.targetPos = (centerx//gridSize * gridSize, centery//gridSize * gridSize)  # Update dynamically
@@ -161,15 +162,8 @@ class Enemy(pygame.sprite.Sprite):
             self.targetPos != getattr(self, 'last_target', None):
                 if currentTime - getattr(self, 'lastTime', 0) > 1:
                     self.lastTime = currentTime
-                  #  print("new path needed, enemy")
-                   # if hasattr(self, 'path'):
-                    #    print(self.path)
-                     #   print(self.targetPos)
-                      #  print(centerx, centery)
-                   #     if self.targetPos in landPositions:
-                    #        print("target is in land positions")
                     start_pos = (self.rect.x//gridSize * gridSize, self.rect.y//gridSize * gridSize)
-                    self.path = calculate_path(start_pos, self.targetPos, landPositions, gridSize)
+                    self.path = calculate_path(start_pos, self.targetPos, landPositions, treePositions, gridSize)
                     self.last_target = self.targetPos
                 
             if self.path:
@@ -179,42 +173,6 @@ class Enemy(pygame.sprite.Sprite):
                     self.path.pop(0)
                 
                 move_along_path(self, self.path, gridSize)
-       # if self.target:
-        #    self.targetPos = (self.target.rect.centerx, self.target.rect.centery)  # Update dynamically
-         #   targetPosition = self.targetPos
-
-          #  newX, newY = self.rect.x, self.rect.y  # Store current position
-           # moved = False  # Track if the pirate moved
-
-            # Try moving horizontally first
-           # if self.rect.x < targetPosition[0] and ((newX + self.speed)//gridSize * gridSize, newY//gridSize * gridSize) in landPositions:
-            #    newX += self.speed
-             #   moved = True
-           # elif self.rect.x > targetPosition[0] and ((newX - self.speed)//gridSize * gridSize, newY//gridSize * gridSize) in landPositions:
-            #    newX -= self.speed
-             #   moved = True
-
-            # Try moving vertically if horizontal movement didn't work
-          #  if not moved:
-           #     if self.rect.y < targetPosition[1] and (newX//gridSize * gridSize, (newY + self.speed)//gridSize * gridSize) in landPositions:
-            #        newY += self.speed
-             #   elif self.rect.y > targetPosition[1] and (newX//gridSize * gridSize, (newY - self.speed)//gridSize * gridSize) in landPositions:
-              #      newY -= self.speed
-
-            # Update position if it's a valid land tile
-          #  if (newX//gridSize * gridSize, newY//gridSize * gridSize) in landPositions:
-           #     self.rect.x, self.rect.y = newX, newY
-              #  self.rect.center = self.position  # Update rect position
-
-          #  targetPosition = self.targetPos
-          #  if self.rect.centerx < targetPosition[0]:
-          #      self.rect.centerx += self.speed
-          #  elif self.rect.centerx > targetPosition[0]:
-          #      self.rect.centerx -= self.speed
-          #  if self.rect.centery < targetPosition[1]:
-           #     self.rect.centery += self.speed
-           # elif self.rect.centery > targetPosition[1]:
-            #    self.rect.centery -= self.speed
     
     def atTarget(self):
         targetX, targetY = self.target.rect.x, self.target.rect.y
@@ -263,7 +221,7 @@ class Enemy(pygame.sprite.Sprite):
         if self.showHealthBar:
             self.drawHealthBar(screen, cameraX, cameraY)
 
-    def moveAround(self, landPositions, gridSize=20):
+    def moveAround(self, landPositions, treePositions, gridSize=20):
        # Calculate the next position
         new_position = [self.rect.x + self.direction[0] * self.speed, 
                         self.rect.y + self.direction[1] * self.speed]
@@ -271,7 +229,7 @@ class Enemy(pygame.sprite.Sprite):
         gridPosition = (new_position[0] // gridSize * gridSize, new_position[1] // gridSize * gridSize)
 
         # Only move if the new position is on land
-        if tuple(gridPosition) in landPositions:
+        if tuple(gridPosition) in landPositions and gridPosition not in treePositions:
             self.rect.x, self.rect.y = new_position[0], new_position[1]
         # Randomly change direction occasionally
         if random.random() < 0.02:
