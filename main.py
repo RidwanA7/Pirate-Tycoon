@@ -19,7 +19,7 @@ from perlin_noise import PerlinNoise
 import numpy as np
 from woodChopperHut import WoodChopperHut, WoodChopper
 
-#new
+
 
 #Game Settings
 pygame.init()
