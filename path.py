@@ -1,7 +1,7 @@
 import pygame
 import time
 
-#new
+
 
 class Path(pygame.sprite.Sprite):
     def __init__(self, position):
