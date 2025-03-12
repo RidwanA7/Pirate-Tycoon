@@ -5,7 +5,6 @@ from restuarant import Restaurant
 import math
 from enemy import Node, calculate_path, move_along_path
 
-#new
 
 class Pirate:
     def __init__(self, position, payment):
