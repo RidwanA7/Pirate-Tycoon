@@ -18,11 +18,28 @@ from watchTower import WatchTower
 from perlin_noise import PerlinNoise
 import numpy as np
 from woodChopperHut import WoodChopperHut, WoodChopper
+import json
+import os
+import sqlite3
 
+#new
 
+def clearLeaderBoard():
+    conn = sqlite3.connect("leaderboard.db")
+    cursor = conn.cursor()
+    
+    cursor.execute("DELETE FROM leaderboard;")  # Delete all rows
+    conn.commit()
+    conn.close()
+    
+    print("Leaderboard data cleared!")
+
+#clearLeaderBoard()
 
 #Game Settings
 pygame.init()
+
+
 screenWidth = 800
 screenHeight = 600
 fps = 100
@@ -97,7 +114,7 @@ white = (255, 255, 255)
 grey = (128, 128, 128)
 
 #Game Variables
-gold = 7000000
+gold = 999999
 wood = 0
 
 population = 0
@@ -133,8 +150,8 @@ populationFont = pygame.font.SysFont(None, 36)
 
 #create menu
 menuHeight = 100
-menuPrices = {"small": 500, "medium": 150000, "large": 500000, "tent": 300, "restaurant": 1000, "farm": 1000, 'cookhouse': 1000, 'path': 10,
-              "farmer": 1000, "watchTower": 10000, "land": 100, "woodChopperHut": 1000}
+menuPrices = {"small": 1, "medium": 150000, "large": 500000, "tent": 300, "restaurant": 1000, "farm": 1000, 'cookhouse': 1000, 'path': 10,
+              "farmer": 1000, "watchTower": 10000, "land": 100, "woodChopperHut": 1000} #costs 500
 menuItems = [
     {"item": 'small', "rect": pygame.Rect(10, screenHeight - menuHeight + 10, 40, 40), "dock": True},
     {"item": 'medium',"rect": pygame.Rect(70, screenHeight - menuHeight + 10, 40, 40), "dock": True},
@@ -340,7 +357,7 @@ def handleMenuClicks(mouseX, mouseY, adjustedMouseX, adjustedMouseY, gold, noOfI
     # Check if the mouse is clicked on a menu item
     for label, rect in speedButtons.items():
         if rect.collidepoint(mouseX, mouseY):
-            return gold, placedItems, selectedItem, isDock, noOfItems, landPositions  # Skip item placement if inside speed button
+            return gold, placedItems, selectedItem, isDock, noOfItems, landPositions, wood  # Skip item placement if inside speed button
         
     for item in menuItems:
         if item["rect"].collidepoint(mouseX, mouseY):
@@ -364,7 +381,7 @@ def handleMenuClicks(mouseX, mouseY, adjustedMouseX, adjustedMouseY, gold, noOfI
                     "y": adjustedMouseY,
                     "expiration": time.time() + 1
                 })
-                return gold, placedItems, selectedItem, isDock, noOfItems, landPositions
+                return gold, placedItems, selectedItem, isDock, noOfItems, landPositions, wood
 
             elif selectedItem != "farmer" and any(item["orientation"] != "land" for item in placedItems if item["pos"] == gridPosition):
                 # Prevent placing objects on objects (except land)
@@ -374,7 +391,7 @@ def handleMenuClicks(mouseX, mouseY, adjustedMouseX, adjustedMouseY, gold, noOfI
                     "y": adjustedMouseY,
                     "expiration": time.time() + 1
                 })
-                return gold, placedItems, selectedItem, isDock, noOfItems, landPositions
+                return gold, placedItems, selectedItem, isDock, noOfItems, landPositions, wood
             
         
         if selectedItem == 'farmer':  # Farmer-specific placement logic
@@ -385,7 +402,7 @@ def handleMenuClicks(mouseX, mouseY, adjustedMouseX, adjustedMouseY, gold, noOfI
                     "y": adjustedMouseY,
                     "expiration": time.time() + 1
                 })
-                return gold, placedItems, selectedItem, isDock, noOfItems, landPositions
+                return gold, placedItems, selectedItem, isDock, noOfItems, landPositions, wood
         
         # Updated land placement check
         if gold >= menuPrices[selectedItem] and selectedItem == "land" and gridPosition not in landPositions:
@@ -397,14 +414,18 @@ def handleMenuClicks(mouseX, mouseY, adjustedMouseX, adjustedMouseY, gold, noOfI
                 placedItems.append(
                     {"item": SelectedItem, "pos": (adjustedMouseX // gridSize * gridSize, adjustedMouseY // gridSize * gridSize), "orientation": "land"})
                 floatingTexts.append({"text": f"-{menuPrices[selectedItem]}$", "x": adjustedMouseX, "y": adjustedMouseY, "expiration": currentTime + 1})
-                return gold, placedItems, selectedItem, isDock, noOfItems, landPositions
+                return gold, placedItems, selectedItem, isDock, noOfItems, landPositions, wood
+        
+        if gridPosition in treePositions:
+            print("cant place on trees")
+            return gold, placedItems, selectedItem, isDock, noOfItems, landPositions, wood
         
         else:
             if gold >= menuPrices[selectedItem]:
                 currentTime = time.time()
                 if isDock:
                     if selectedItem == 'small':
-                        woodCost = 1
+                        woodCost = 0 #costs 1
                     elif selectedItem == 'medium':
                         woodCost = 2
                     elif selectedItem == 'large':
@@ -1326,11 +1347,159 @@ def growTrees(landPositions, treePositions, lastGrowTime):
 
 lastGrowTime = time.time()  # Track last tree growth time
 
+UserDataFile = "userData.json"
+
+def loadUsers():
+    if os.path.exists(UserDataFile):
+        with open(UserDataFile, "r") as file:
+            return json.load(file)
+    return {}
+
+def saveUsers(users):
+    with open(UserDataFile, "w") as file:
+        json.dump(users, file)
+
+def registerUser(username, password):
+    users = loadUsers()
+    if username in users:
+        return False, "User already exists!"
+    users[username] = password
+    saveUsers(users)
+    return True, "Registration successful!"
+
+def loginUser(username, password):
+    users = loadUsers()
+    if username in users and users[username] == password:
+        return True, "Login successful!"
+    return False, "Invalid username or password."
+
+def loginMenu():
+    while True:
+        screen.fill((50, 50, 50))
+        title = font.render("Press L to Login or R to Register", True, (255, 255, 255))
+        screen.blit(title, (200, 250))
+        pygame.display.flip()
+        
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                exit()
+            
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_l:  # Login
+                    username = input("Enter username: ")
+                    password = input("Enter password: ")
+                    success, msg = loginUser(username, password)
+                    print(msg)
+                    if success:
+                        return username
+                
+                elif event.key == pygame.K_r:  # Register
+                    username = input("Enter new username: ")
+                    password = input("Enter new password: ")
+                    success, msg = registerUser(username, password)
+                    print(msg)
+
+conn = sqlite3.connect('leaderboard.db')
+cursor = conn.cursor()
+
+# Create table if it doesn't exist
+cursor.execute('''CREATE TABLE IF NOT EXISTS leaderboard (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT,
+                    completion_time REAL)''')
+
+conn.commit()
+conn.close()
+
+playerUsername = loginMenu()
+
+def gameCompleteScreen(gold, gameComplete, startTime, playerUsername):
+    if gold >= 1000000 and not gameComplete:
+        gameComplete = True
+        completionTime = time.time() - startTime
+
+        # Save completion time to the database
+        conn = sqlite3.connect("leaderboard.db")
+        cursor = conn.cursor()
+
+        # Check if the player already has a time recorded
+        cursor.execute("SELECT completion_time FROM leaderboard WHERE username = ?", (playerUsername,))
+        existing_time = cursor.fetchone()
+
+        if existing_time:
+            existing_time = existing_time[0]
+            if completionTime < existing_time:  # Only update if the new time is shorter
+                cursor.execute("UPDATE leaderboard SET completion_time = ? WHERE username = ?", 
+                               (completionTime, playerUsername))
+        else:
+            cursor.execute("INSERT INTO leaderboard (username, completion_time) VALUES (?, ?)", 
+                           (playerUsername, completionTime))
+
+        conn.commit()
+        conn.close()
+
+        screen = pygame.display.set_mode((800, 600))
+        font = pygame.font.Font(None, 36)
+        
+        popup_active = True
+        while popup_active:
+            screen.fill((0, 0, 0))  # Background color
+
+            # Retrieve the top 5 fastest completion times
+            conn = sqlite3.connect("leaderboard.db")
+            cursor = conn.cursor()
+            cursor.execute("SELECT username, completion_time FROM leaderboard ORDER BY completion_time ASC LIMIT 5")
+            top_times = cursor.fetchall()
+            conn.close()
+
+            leaderboard_height = 30 * len(top_times)  # Each entry takes 30px height
+            popup_height = 250 + leaderboard_height  # Adjusting popup height
+
+            popup_rect = pygame.Rect(100, 100, 570, popup_height)  # Adjust height dynamically
+            pygame.draw.rect(screen, (255, 255, 255), popup_rect, border_radius=10)
+
+            # Display message
+            text = font.render("Congratulations! You have 1,000,000 coins!", True, (0, 0, 0))
+            screen.blit(text, (120, 130))
+
+            # Display completion time
+            time_text = font.render(f"Time taken: {int(completionTime // 60)} min {int(completionTime % 60)} sec", True, (0, 0, 0))
+            screen.blit(time_text, (120, 180))
+
+            # Display leaderboard
+            screen.blit(font.render("Leaderboard (Fastest times):", True, (0, 0, 0)), (120, 220))
+            for i, (username, time_record) in enumerate(top_times):
+                entry = font.render(f"{i+1}. {username}: {int(time_record // 60)} min {int(time_record % 60)} sec", True, (0, 0, 0))
+                screen.blit(entry, (120, 250 + i * 30))
+
+            # Position "Continue" button **below** leaderboard
+            continue_y = 270 + leaderboard_height
+            continue_button = pygame.draw.rect(screen, (0, 255, 0), (300, continue_y, 200, 50), border_radius=10)
+            button_text = font.render("Continue", True, (0, 0, 0))
+            screen.blit(button_text, (360, continue_y + 15))
+
+            pygame.display.flip()
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    exit()
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    x, y = event.pos
+                    if continue_button.collidepoint(x, y):  
+                        popup_active = False  # Close the popup when clicked
+
+    return gameComplete
+
 temp = False
 
+gameComplete = False
+startTime = time.time()
 run = True
 while run:
     currentTime = time.time()
+
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             run = False
@@ -1464,12 +1633,10 @@ while run:
     drawStatsButton()
     drawStatsDisplay(showStatsMenu, profitLog, currentMonthIncome, currentMonthExpenses, currentMonthProfit, currentDate)
     drawMouse(screen, gridSize, cameraX, cameraY, destroyingMode)
-
-    if not temp:
-        print(treePositions)
-        temp = True
+    gameComplete = gameCompleteScreen(gold, gameComplete, startTime, playerUsername)
 
     pygame.display.update()
     timer.tick(fps)
     
 pygame.quit()
+
