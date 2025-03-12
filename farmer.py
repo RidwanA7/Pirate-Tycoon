@@ -1,8 +1,11 @@
 import pygame
+import time
 from farm import Farm, FarmGroup
 from cookhouse import Cookhouse
 from collections import deque
 from restuarant import Restaurant
+
+#new
 
 class Farmer(pygame.sprite.Sprite):
     def __init__(self, position):
@@ -22,6 +25,33 @@ class Farmer(pygame.sprite.Sprite):
         self.path = None  # Stores the computed path
         self.pathIndex = 0  # Tracks position in path
         self.reversePath = False  # Tracks if the farmer is going back
+
+        self.health = 50
+        self.maxHealth = 50
+        self.showHealthBar = False
+        self.healthBarStartTime = 0
+
+    def drawHealthBar(self, screen, cameraX, cameraY):
+         # Calculate health bar width
+        bar_width = self.rect.width
+        bar_height = 5
+        health_ratio = self.health / self.maxHealth
+        health_bar_width = int(bar_width * health_ratio)
+
+        # Define health bar positions
+        bar_x = self.rect.x + cameraX
+        bar_y = self.rect.y - bar_height - 2 + cameraY # Position it above the building
+
+        # Draw background bar (red)
+        pygame.draw.rect(screen, (255, 0, 0), (bar_x, bar_y, bar_width, bar_height))
+
+        # Draw health bar (green)
+        pygame.draw.rect(screen, (0, 255, 0), (bar_x, bar_y, health_bar_width, bar_height))
+
+        # Hide health bar after 2 seconds
+        current_time = time.time()
+        if current_time - self.healthBarStartTime > 2:
+            self.showHealthBar = False
     
     def checkBuildingAtEnd(self, pathGrid, placedItems):
         position = tuple(self.position)
@@ -80,88 +110,86 @@ class Farmer(pygame.sprite.Sprite):
             self.role = "cookhouseToRestaurant"
         else:
             self.role = None  # No valid role found; farmer won't move
-             
-    def moveTowards(self, item, pathGrid):
-        currentPos = tuple(self.position)
-        targetPos = (item.position[0] + 20 // 2, item.position[1] + 20 // 2)
-        
-        # If we're already close enough, don't move
-        if ((currentPos[0] - targetPos[0]) ** 2 + (currentPos[1] - targetPos[1]) ** 2) ** 0.5 <= 2:
-            return
-        
-        # BFS to find the shortest path
-        queue = deque([currentPos])
+
+    def findPath(self, start, target, pathGrid):
+        """Finds the shortest path using BFS."""
+        queue = deque([start])
         visited = set()
-        visited.add(currentPos)
-        parent = {currentPos: None}
+        visited.add(start)
+        parent = {start: None}
+
+        GRID_STEP = self.speed
         targetFound = False
         finalPos = None
 
-        # Define the base step size for the grid
-        GRID_STEP = self.speed  # Use smallest possible step for pathfinding
-
         while queue and not targetFound:
             current = queue.popleft()
-            
-            # Check if we're close enough to target
-            if ((current[0] - targetPos[0]) ** 2 + (current[1] - targetPos[1]) ** 2) ** 0.5 <= 15:
+
+            if ((current[0] - target[0]) ** 2 + (current[1] - target[1]) ** 2) ** 0.5 <= 15:
                 targetFound = True
                 finalPos = current
                 break
 
-            # Use single-unit steps for pathfinding
             neighbors = [
-                (current[0], current[1] - GRID_STEP),  # up
-                (current[0] + GRID_STEP, current[1]),  # right
-                (current[0], current[1] + GRID_STEP),  # down
-                (current[0] - GRID_STEP, current[1])   # left
+                (current[0], current[1] - GRID_STEP),  # Up
+                (current[0] + GRID_STEP, current[1]),  # Right
+                (current[0], current[1] + GRID_STEP),  # Down
+                (current[0] - GRID_STEP, current[1])   # Left
             ]
 
             for neighbor in neighbors:
                 neighbor = tuple(map(int, neighbor))
-                if (neighbor in pathGrid and pathGrid[neighbor] and neighbor not in visited):
+                if neighbor in pathGrid and pathGrid[neighbor] and neighbor not in visited:
                     queue.append(neighbor)
                     visited.add(neighbor)
                     parent[neighbor] = current
 
         if targetFound:
-            # Reconstruct path
             path = []
             current = finalPos
             while current is not None:
                 path.append(current)
                 current = parent[current]
             path.reverse()
+            return path[1:]  # Exclude the current position
+        return None  # No path found
 
-            # Move towards next position using speed
-            if len(path) > 1:
-                nextPos = path[1]
-                # Scale movement by the farmer's speed and multiplier
-                moveDistance = self.speed  
-                # Calculate direction and normalize movement to the next position
-                directionX = nextPos[0] - currentPos[0]
-                directionY = nextPos[1] - currentPos[1]
-                distance = (directionX**2 + directionY**2) ** 0.5
-                
-                if distance > 0:
-                    # Normalize the direction and multiply by speed and multiplier
-                    normalizedX = directionX / distance * moveDistance
-                    normalizedY = directionY / distance * moveDistance
-                    
-                    # Update position
-                    self.position[0] += normalizedX
-                    self.position[1] += normalizedY
-                    self.rect.center = self.position
+    def moveTo(self, nextPos):
+        currentPos = self.position
+        moveDistance = self.speed
+
+        directionX = nextPos[0] - currentPos[0]
+        directionY = nextPos[1] - currentPos[1]
+        distance = (directionX**2 + directionY**2) ** 0.5
+
+        if distance > 0:
+            normalizedX = directionX / distance * moveDistance
+            normalizedY = directionY / distance * moveDistance
+
+            self.position[0] += normalizedX
+            self.position[1] += normalizedY
+            self.rect.center = self.position
+
+
+    def moveTowards(self, item, pathGrid):
+        currentPos = tuple(self.position)
+        targetPos = (item.position[0] + 20 // 2, item.position[1] + 20 // 2)
+        
+        # If we're already close enough, don't move
+        if ((currentPos[0] - targetPos[0]) ** 2 + (currentPos[1] - targetPos[1]) ** 2) ** 0.5 <= 17:
+            self.currentPath = None
+            return
+
+        if not hasattr(self, 'currentPath') or self.currentPath is None or self.targetPos != targetPos:
+            self.currentPath = self.findPath(currentPos, targetPos, pathGrid)
+            self.targetPos = targetPos  # Store the target position
+
+         #If a path exists, follow it:
+        if self.currentPath and len(self.currentPath) > 1:
+            nextPos = self.currentPath.pop(0)  # Get the next position in the path
+            self.moveTo(nextPos)
         else:
             print(f"No path found from {currentPos} to {targetPos}")
-            # Optional: print some debug info about the pathGrid around current position
-            print("Neighbors available:")
-            for dx in [-GRID_STEP, 0, GRID_STEP]:
-                for dy in [-GRID_STEP, 0, GRID_STEP]:
-                    check_pos = (currentPos[0] + dx, currentPos[1] + dy)
-                    if check_pos in pathGrid:
-                        print(f"Position {check_pos}: {pathGrid[check_pos]}")
-
         
 
     def calculateDistance(self, target):
@@ -207,7 +235,7 @@ class Farmer(pygame.sprite.Sprite):
         yDiff = abs(self.position[1] - farmY)
         
         # Check if the farmer is within 20 pixels of the farm
-        return xDiff <= 15 and yDiff <= 15
+        return xDiff <= 17 and yDiff <= 17
 
     def draw(self, screen, cameraX, cameraY):
         screen.blit(self.image, (self.rect.x + cameraX, self.rect.y + cameraY))
@@ -215,6 +243,10 @@ class Farmer(pygame.sprite.Sprite):
         cropText = font.render(f"Crops ({self.crops})", True, (255, 255, 255))  # White text
         textPos = (self.rect.x + cameraX, self.rect.y + cameraY - 15)
         screen.blit(cropText, textPos)
+
+         # Draw the health bar if it should be displayed
+        if self.showHealthBar:
+            self.drawHealthBar(screen, cameraX, cameraY)
 
 
     def getCrops(self, farmGroup):
@@ -233,7 +265,7 @@ class Farmer(pygame.sprite.Sprite):
         yDiff = abs(self.position[1] - cookhouseY)
 
         # Check if the farmer is within 20 pixels of the cookhouse
-        return xDiff <= 15 and yDiff <= 15
+        return xDiff <= 17 and yDiff <= 17
     
     def isAtPlace(self, item):
         itemX = item.position[0] + 20 // 2
@@ -242,7 +274,7 @@ class Farmer(pygame.sprite.Sprite):
         yDiff = abs(self.position[1] - itemY)
         
         # Check if the farmer is within 20 pixels of the item
-        return xDiff <= 15 and yDiff <= 15
+        return xDiff <= 17 and yDiff <= 17
     
     def dropCrops(self, cookhouse):
         if self.carryingCrops and isinstance(cookhouse, Cookhouse):
