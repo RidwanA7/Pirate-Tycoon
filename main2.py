@@ -4,10 +4,9 @@ from dock import Dock
 from boat import Boat
 from pirate import Pirate
 from tent import Tent
-from restuarant import Restaurant
+from restaurant import Restaurant
 from farm import Farm, FarmGroup
 from cookhouse import Cookhouse
-from map import TileKind, Map
 from farmer import Farmer
 import time
 from path import Path, Land
@@ -182,7 +181,6 @@ GREEN = (0, 100, 0)
 SAND = (194, 178, 128)  # Sand
 islandArea = 5000
 
-
 def generateWorld(weights, randomSeed = random.randint(1, 100)):
     worldDrawer = WorldDrawer()
     world = World(WORLD_X, WORLD_Y, randomSeed)
@@ -197,13 +195,13 @@ background = pygame.Surface(screen.get_size())
 for y in range(0, WINDOW_HEIGHT, TILESIZE):
     for x in range(0, WINDOW_WIDTH, TILESIZE):
         background.blit(water, (x, y))
+
 landPositions = world_drawer.draw_tiles(tile_map, cameraX, cameraY)
-print(landPositions)
-print(len(landPositions))
 for x in range(len(landPositions)):
     landPositions[x] = (landPositions[x][0]//20 * 20, landPositions[x][1]//20 * 20)
-lastGoldReductionTime = time.time()
 #print(landPositions)
+lastGoldReductionTime = time.time()
+print(landPositions)
 
 numTrees = 15
 treePositions = generateTrees(landPositions, numTrees)
@@ -486,7 +484,7 @@ def handleMenuClicks(mouseX, mouseY, adjustedMouseX, adjustedMouseY, gold, noOfI
                         if selectedItem == 'watchTower':
                             SelectedItem = WatchTower([adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize], menuPrices[selectedItem])
                         if selectedItem == 'woodChopperHut':
-                            SelectedItem = WoodChopperHut([adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize], menuPrices[selectedItem], treePositions)
+                            SelectedItem = WoodChopperHut([adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize], menuPrices[selectedItem], treePositions, gridPosition)
                         placedItems.append(
                             {"item": SelectedItem, "pos": (adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize), "orientation": "normal"})
                         floatingTexts.append({"text": f"-{menuPrices[selectedItem]}$", "x": adjustedMouseX, "y": adjustedMouseY, "expiration": currentTime + 1})
@@ -1288,7 +1286,7 @@ def removeFarmFromGroup(farm, farmGroups):
 
 def drawTrees(screen, treePositions, cameraX, cameraY):
     treeColor = (139, 69, 19)  # Green color for trees
-    treeImage = pygame.image.load(r"C:\Users\Study\Pirate Tycoon\images\grassv2.png")  # Load tree image
+    treeImage = pygame.image.load(r"N:\Pirate\images\tree.png")  # Load tree image
     treeImage = pygame.transform.scale(treeImage, (20, 20))  # Resize to 20x20 pixels
     for tree in treePositions:
          screen.blit(treeImage, (tree[0] + cameraX, tree[1] + cameraY))  # Draw the tree
@@ -1491,8 +1489,10 @@ while run:
 
             if event.type == pygame.MOUSEBUTTONDOWN:
                 mouseX, mouseY = pygame.mouse.get_pos()
+                if (mouseX//20 * 20, mouseY//20 * 20) in landPositions:
+                    print("land")
                 adjustedMouseX, adjustedMouseY = adjustMouseCoordinates(mouseX, mouseY, cameraX, cameraY, zoomLevel)
-                print("mouse",adjustedMouseX, adjustedMouseY)
+               # print("mouse",adjustedMouseX, adjustedMouseY)
                 handleSpeedButtonClick(mouseX, mouseY)
                 handlePickaxeClicks()
                 showStatsMenu = ToggleStatsDisplay(mouseX, mouseY, showStatsMenu)
@@ -1622,4 +1622,3 @@ while run:
     timer.tick(fps)
     
 pygame.quit()
-
