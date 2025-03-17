@@ -1,15 +1,14 @@
 import pygame
 from buildings import Building
 import math
-
-#new
+import random
 
 class WoodChopper():
 
     assigned_trees = set()  # Shared set to track trees currently being chopped
 
-    def __init__(self, position, trees, hutPos, hut):
-        self.image = pygame.image.load(r"C:\Users\Study\Pirate Tycoon\images\woodChopper.png")
+    def __init__(self, position, trees, hutPos, hut, land_positions):
+        self.image = pygame.image.load(r"N:\Pirate\images\woodChopper.png")
         self.image = pygame.transform.scale(self.image, (20, 20))
         self.rect = self.image.get_rect(center=position)
         self.speed = 2
@@ -18,9 +17,10 @@ class WoodChopper():
         self.state = "moving_to_tree"
         self.hut = hutPos
         self.hutObject = hut
+        self.land_positions = land_positions  # Ensure land positions are in a set for quick lookup
 
     def find_nearest_tree(self, trees):
-        available_trees = [tree for tree in trees if tree not in WoodChopper.assigned_trees]
+        available_trees = [tree for tree in trees if tree not in WoodChopper.assigned_trees and tree in self.land_positions]
         if not available_trees:
             return None
 
@@ -30,7 +30,7 @@ class WoodChopper():
         return tree
 
     def move(self):
-        """Move towards the target (tree or hut)."""
+        """Move towards the target (tree or hut) only if within land positions."""
         if self.state == "moving_to_tree" and self.target_tree:
             target_x, target_y = self.target_tree
         else:
@@ -40,8 +40,14 @@ class WoodChopper():
         distance = math.sqrt(dx**2 + dy**2)
 
         if distance > 1:  # Stop when very close
-            self.rect.x += (dx / distance) * self.speed
-            self.rect.y += (dy / distance) * self.speed
+            new_x = round(self.rect.x + (dx / distance) * self.speed)
+            new_y = round(self.rect.y + (dy / distance) * self.speed)
+            new_x = new_x // 20 * 20  # Align to grid
+            new_y = new_y // 20 * 20  # Align to grid
+
+            if (new_x, new_y) in self.land_positions:
+                self.rect.x = new_x
+                self.rect.y = new_y
         else:
             if self.state == "moving_to_tree":
                 self.destroy_tree()
@@ -67,21 +73,29 @@ class WoodChopper():
             if self.target_tree:
                 self.state = "moving_to_tree"
         self.move()
-        
+
+
+def generateTrees(landPositions, numTrees):
+    treePositions = set()
+    while len(treePositions) < numTrees:
+        treePos = random.choice(landPositions)  # Pick a random land tile
+        treePositions.add(treePos)
+    return list(treePositions)  # Convert to list before returning
 
 class WoodChopperHut(Building):
-    def __init__(self, position, price, trees):
+    def __init__(self, position, price, trees, land_positions):
         super().__init__(position, price)
-        self.image = pygame.image.load(r"C:\Users\Study\Pirate Tycoon\images\woodChopperHut.png")
+        self.image = pygame.image.load(r"images/hut.png")
         self.image = pygame.transform.scale(self.image, (20, 20))
         self.rect = self.image.get_rect(topleft=position)
         self.label = "woodChopperHut"
         self.hutPos = position
         self.woodCount = 0
         self.font = pygame.font.Font(None, 24)  # Font for displaying wood count
+        self.land_positions = land_positions
 
-        # Spawn two woodchoppers at the hut
-        self.woodchoppers = [WoodChopper(position, trees, self.hutPos, self) for _ in range(2)]
+        # Spawn two woodchoppers at the hut, passing land positions
+        self.woodchoppers = [WoodChopper(position, trees, self.hutPos, self, land_positions) for _ in range(2)]
 
     def increaseWood(self):
         """Increase wood count when a chopper returns with wood."""
@@ -101,5 +115,3 @@ class WoodChopperHut(Building):
 
         for chopper in self.woodchoppers:
             screen.blit(chopper.image, (chopper.rect.x + cameraX, chopper.rect.y + cameraY))
-
-        
