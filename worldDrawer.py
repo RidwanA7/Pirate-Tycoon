@@ -60,11 +60,12 @@ class WorldDrawer:
                         tile_index = self.get_tile_index_for_type(tile_corner_types, terrain_type)
                         image = self.terrain_tiles[terrain_type][tile_index]
                         break
-
+              #  print(terrain_type)
                 # Apply camera offset so tiles shift based on movement
                 screenX = x * TILESIZE + cameraX
                 screenY = y * TILESIZE + cameraY
-                landPositions.append((x*TILESIZE,y*TILESIZE))
+                if terrain_type == 4 or terrain_type == 3:
+                    landPositions.append((x*TILESIZE,y*TILESIZE))
                 self.display_surface.blit(image, (screenX,screenY))
         if not self.gridPositionFound:
             self.gridPositionFound = True
