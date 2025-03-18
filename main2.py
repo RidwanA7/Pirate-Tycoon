@@ -4,7 +4,7 @@ from dock import Dock
 from boat import Boat
 from pirate import Pirate
 from tent import Tent
-from restaurant import Restaurant
+from restuarant import Restaurant
 from farm import Farm, FarmGroup
 from cookhouse import Cookhouse
 from farmer import Farmer
@@ -201,7 +201,7 @@ for x in range(len(landPositions)):
     landPositions[x] = (landPositions[x][0]//20 * 20, landPositions[x][1]//20 * 20)
 #print(landPositions)
 lastGoldReductionTime = time.time()
-print(landPositions)
+#print(landPositions)
 
 numTrees = 15
 treePositions = generateTrees(landPositions, numTrees)
@@ -484,7 +484,7 @@ def handleMenuClicks(mouseX, mouseY, adjustedMouseX, adjustedMouseY, gold, noOfI
                         if selectedItem == 'watchTower':
                             SelectedItem = WatchTower([adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize], menuPrices[selectedItem])
                         if selectedItem == 'woodChopperHut':
-                            SelectedItem = WoodChopperHut([adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize], menuPrices[selectedItem], treePositions, gridPosition)
+                            SelectedItem = WoodChopperHut([adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize], menuPrices[selectedItem], treePositions, landPositions)
                         placedItems.append(
                             {"item": SelectedItem, "pos": (adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize), "orientation": "normal"})
                         floatingTexts.append({"text": f"-{menuPrices[selectedItem]}$", "x": adjustedMouseX, "y": adjustedMouseY, "expiration": currentTime + 1})
@@ -1286,7 +1286,7 @@ def removeFarmFromGroup(farm, farmGroups):
 
 def drawTrees(screen, treePositions, cameraX, cameraY):
     treeColor = (139, 69, 19)  # Green color for trees
-    treeImage = pygame.image.load(r"N:\Pirate\images\tree.png")  # Load tree image
+    treeImage = pygame.image.load(r"C:\Users\Study\Pirate Tycoon\images\tree.png")  # Load tree image
     treeImage = pygame.transform.scale(treeImage, (20, 20))  # Resize to 20x20 pixels
     for tree in treePositions:
          screen.blit(treeImage, (tree[0] + cameraX, tree[1] + cameraY))  # Draw the tree
