@@ -5,18 +5,16 @@ from farmer import Farmer
 from path import Path, Land
 import math
 
-#new
-
 class Node:
-    def __init__(self, pos, g_cost=float('inf'), h_cost=0):
+    def __init__(self, pos, gCost=float('inf'), hCost=0):
         self.pos = pos
-        self.g_cost = g_cost  # Cost from start to this node
-        self.h_cost = h_cost  # Estimated cost from this node to end
-        self.f_cost = g_cost + h_cost  # Total cost
+        self.gCost = gCost  # Cost from start to this node
+        self.hCost = hCost  # Estimated cost from this node to end
+        self.fCost = gCost + hCost  # Total cost
         self.parent = None
 
-def calculate_path(start_pos, target_pos, landPositions, treePositions, gridSize):
-    def get_neighbors(pos):
+def calculatePath(startPos, targetPos, landPositions, treePositions, gridSize):
+    def getNeighbors(pos):
         x, y = pos
         neighbors = [
             (x + gridSize, y),  # right
@@ -29,75 +27,75 @@ def calculate_path(start_pos, target_pos, landPositions, treePositions, gridSize
     def heuristic(pos, target):
         return abs(pos[0] - target[0]) + abs(pos[1] - target[1])
     
-    def find_nearest_land(pos):
+    def findNearestLand(pos):
         """Find the closest land position to the given pos."""
         if pos in landPositions and pos not in treePositions:
             return pos  # Target is already valid
 
         # Find nearest valid land tile
-        nearest_land = min((p for p in landPositions if p not in treePositions), key=lambda p: heuristic(pos, p))
-        return nearest_land
+        nearestLand = min((p for p in landPositions if p not in treePositions), key=lambda p: heuristic(pos, p))
+        return nearestLand
     
-    start_grid = (start_pos[0], start_pos[1])
-    target_grid = find_nearest_land((target_pos[0], target_pos[1]))  # Ensure valid target
+    startGrid = (startPos[0], startPos[1])
+    targetGrid = findNearestLand((targetPos[0], targetPos[1]))  # Ensure valid target
     
-    start_node = Node(start_grid, g_cost=0, h_cost=heuristic(start_grid, target_grid))
+    startNode = Node(startGrid, gCost=0, hCost=heuristic(startGrid, targetGrid))
     
-    open_set = {start_grid: start_node}
-    closed_set = set()
+    openSet = {startGrid: startNode}
+    closedSet = set()
     
-    while open_set:
-        current_pos = min(open_set, key=lambda pos: open_set[pos].f_cost)
-        current = open_set.pop(current_pos)
+    while openSet:
+        currentPos = min(openSet, key=lambda pos: openSet[pos].fCost) #finds node with lowest total cost
+        current = openSet.pop(currentPos) #removes that node from open set
         
-        if current.pos == target_grid:
+        if current.pos == targetGrid:
             path = []
             while current:
                 path.append(current.pos)
                 current = current.parent
             return path[::-1]
         
-        closed_set.add(current_pos)
+        closedSet.add(currentPos)
         
-        for neighbor_pos in get_neighbors(current_pos):
-            if neighbor_pos in closed_set:
+        for neighborPos in getNeighbors(currentPos):
+            if neighborPos in closedSet:
                 continue
                 
-            g_cost = current.g_cost + gridSize
+            gCost = current.gCost + gridSize
             
-            if neighbor_pos not in open_set:
-                neighbor = Node(neighbor_pos)
-                open_set[neighbor_pos] = neighbor
+            if neighborPos not in openSet:
+                neighbor = Node(neighborPos)
+                openSet[neighborPos] = neighbor
             else:
-                neighbor = open_set[neighbor_pos]
-                if g_cost >= neighbor.g_cost:
+                neighbor = openSet[neighborPos]
+                if gCost >= neighbor.gCost:
                     continue
             
             neighbor.parent = current
-            neighbor.g_cost = g_cost
-            neighbor.h_cost = heuristic(neighbor_pos, target_grid)
-            neighbor.f_cost = neighbor.g_cost + neighbor.h_cost
+            neighbor.gCost = gCost
+            neighbor.hCost = heuristic(neighborPos, targetGrid)
+            neighbor.fCost = neighbor.gCost + neighbor.hCost
     
     return None
 
-def move_along_path(self, path, gridSize):
+def moveAlongPath(self, path, gridSize):
     if not path or len(path) < 2:
         return
     
-    next_pos = path[0]
+    nextPos = path[0]
     
-    dx = next_pos[0] - self.rect.x
-    dy = next_pos[1] - self.rect.y
+    dx = nextPos[0] - self.rect.x
+    dy = nextPos[1] - self.rect.y
     
     if abs(dx) > self.speed:
         self.rect.x += self.speed if dx > 0 else -self.speed
     else:
-        self.rect.x = next_pos[0]
+        self.rect.x = nextPos[0]
         
     if abs(dy) > self.speed:
         self.rect.y += self.speed if dy > 0 else -self.speed
     else:
-        self.rect.y = next_pos[1]
+        self.rect.y = nextPos[1]
 
 class Enemy(pygame.sprite.Sprite):
     def __init__(self, position):
@@ -162,17 +160,17 @@ class Enemy(pygame.sprite.Sprite):
             self.targetPos != getattr(self, 'last_target', None):
                 if currentTime - getattr(self, 'lastTime', 0) > 1:
                     self.lastTime = currentTime
-                    start_pos = (self.rect.x//gridSize * gridSize, self.rect.y//gridSize * gridSize)
-                    self.path = calculate_path(start_pos, self.targetPos, landPositions, treePositions, gridSize)
-                    self.last_target = self.targetPos
+                    startPos = (self.rect.x//gridSize * gridSize, self.rect.y//gridSize * gridSize)
+                    self.path = calculatePath(startPos, self.targetPos, landPositions, treePositions, gridSize)
+                    self.lastTarget = self.targetPos
                 
             if self.path:
-                current_waypoint = self.path[0]
-                if (abs(self.rect.x - current_waypoint[0]) < 4 and 
-                    abs(self.rect.y - current_waypoint[1]) < 4):
+                currentWaypoint = self.path[0]
+                if (abs(self.rect.x - currentWaypoint[0]) < 4 and 
+                    abs(self.rect.y - currentWaypoint[1]) < 4):
                     self.path.pop(0)
                 
-                move_along_path(self, self.path, gridSize)
+                moveAlongPath(self, self.path, gridSize)
     
     def atTarget(self):
         targetX, targetY = self.target.rect.x, self.target.rect.y
@@ -195,24 +193,24 @@ class Enemy(pygame.sprite.Sprite):
 
     def drawHealthBar(self, screen, cameraX, cameraY):
          # Calculate health bar width
-        bar_width = self.rect.width
-        bar_height = 5
-        health_ratio = self.health / self.maxHealth
-        health_bar_width = int(bar_width * health_ratio)
+        barWidth = self.rect.width
+        barHeight = 5
+        healthRatio = self.health / self.maxHealth
+        healthBarWidth = int(barWidth * healthRatio)
 
         # Define health bar positions
-        bar_x = self.rect.x + cameraX
-        bar_y = self.rect.y - bar_height - 2 + cameraY # Position it above the building
+        barX = self.rect.x + cameraX
+        barY = self.rect.y - barHeight - 2 + cameraY # Position it above the building
 
         # Draw background bar (red)
-        pygame.draw.rect(screen, (255, 0, 0), (bar_x, bar_y, bar_width, bar_height))
+        pygame.draw.rect(screen, (255, 0, 0), (barX, barY, barWidth, barHeight))
 
         # Draw health bar (green)
-        pygame.draw.rect(screen, (0, 255, 0), (bar_x, bar_y, health_bar_width, bar_height))
+        pygame.draw.rect(screen, (0, 255, 0), (barX, barY, healthBarWidth, barHeight))
 
         # Hide health bar after 2 seconds
-        current_time = time.time()
-        if current_time - self.healthBarStartTime > 2:
+        currentTime = time.time()
+        if currentTime - self.healthBarStartTime > 2:
             self.showHealthBar = False
     
     def draw(self, screen, cameraX, cameraY):
@@ -223,14 +221,14 @@ class Enemy(pygame.sprite.Sprite):
 
     def moveAround(self, landPositions, treePositions, gridSize=20):
        # Calculate the next position
-        new_position = [self.rect.x + self.direction[0] * self.speed, 
+        newPosition = [self.rect.x + self.direction[0] * self.speed, 
                         self.rect.y + self.direction[1] * self.speed]
 
-        gridPosition = (new_position[0] // gridSize * gridSize, new_position[1] // gridSize * gridSize)
+        gridPosition = (newPosition[0] // gridSize * gridSize, newPosition[1] // gridSize * gridSize)
 
         # Only move if the new position is on land
         if tuple(gridPosition) in landPositions and gridPosition not in treePositions:
-            self.rect.x, self.rect.y = new_position[0], new_position[1]
+            self.rect.x, self.rect.y = newPosition[0], newPosition[1]
         # Randomly change direction occasionally
         if random.random() < 0.02:
             self.direction = random.choice([(1, 0), (-1, 0), (0, 1), (0, -1)]) 
