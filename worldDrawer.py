@@ -3,33 +3,29 @@ from tiles import *
 
 
 class WorldDrawer:
-
     def __init__(self):
-        # open window
+        # Initialize display
         pygame.init()
-        self.display_surface = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+        self.screen = pygame.display.set_mode((WINDOWWIDTH, WINDOWHEIGHT))
 
-        # load tile sheet, and extract the cell images
-        self.tilesheet = pygame.image.load(TILESHEET_PATH).convert_alpha()
-        self.gridPositionFound = False
+        # Load and process tileset
+        self.tilesetImage = pygame.image.load(TILESHEETPATH).convert_alpha()
+        self.gridLocationsDetected = False
 
-        # get images for all tiles for every terrain type
-        self.terrain_tiles = []
-        for terrain_type in ALL_TERRAIN_TYPES:
-            tile_types = []
-            for tile_pos in TERRAIN_TILES[terrain_type]:
-                tile_types.append(self.tilesheet.subsurface((tile_pos[0], tile_pos[1], TILESIZE, TILESIZE)))
-            self.terrain_tiles.append(tile_types)
+        # Extract all tile variants for each terrain type
+        self.terrainImagesets = []
+        for terrainType in ALLTERRAINTYPES:
+            tileVariants = []
+            for tileCoords in TERRAINTILES[terrainType]:
+                tileVariants.append(self.tilesetImage.subsurface((tileCoords[0], tileCoords[1], TILESIZE, TILESIZE)))
+            self.terrainImagesets.append(tileVariants)
 
+    def draw(self, heightMap, cameraX, cameraY, waitForKey):
+        self.renderTerrain(heightMap, cameraX, cameraY)
+        if waitForKey:
+            self.pauseForInput()
 
-    def draw(self, height_map, cameraX, cameraY, wait_for_key):
-        self.draw_tiles(height_map, cameraX, cameraY)
-
-        if wait_for_key:
-            self.wait_key()
-
-
-    def wait_key(self):
+    def pauseForInput(self):
         while True:
             event = pygame.event.wait()
             if event.type == pygame.KEYDOWN:
@@ -38,44 +34,42 @@ class WorldDrawer:
                     quit()
                 break
 
-
-    def draw_tiles(self, terrain_type_map, cameraX, cameraY):
-         # Calculate visible area
-        landPositions = []
-        for y, row in enumerate(terrain_type_map):
-            for x, value in enumerate(row):
-
-                if x == WORLD_X or y == WORLD_Y:
+    def renderTerrain(self, terrainTypeMap, cameraX, cameraY):
+        landCoordinates = []
+        for yPos, row in enumerate(terrainTypeMap):
+            for xPos, value in enumerate(row):
+                if xPos == WORLDX or yPos == WORLDY:
                     continue
-            
-                # get the terrain types of each tile corner
-                tile_corner_types = []
-                tile_corner_types.append(terrain_type_map[y + 1][x + 1])
-                tile_corner_types.append(terrain_type_map[y + 1][x])
-                tile_corner_types.append(terrain_type_map[y][x + 1])
-                tile_corner_types.append(terrain_type_map[y][x])
+                
+                # Determine terrain types at the four corners of this tile
+                cornerTerrainTypes = []
+                cornerTerrainTypes.append(terrainTypeMap[yPos + 1][xPos + 1])
+                cornerTerrainTypes.append(terrainTypeMap[yPos + 1][xPos])
+                cornerTerrainTypes.append(terrainTypeMap[yPos][xPos + 1])
+                cornerTerrainTypes.append(terrainTypeMap[yPos][xPos])
 
-                for terrain_type in ALL_TERRAIN_TYPES:
-                    if terrain_type in tile_corner_types:
-                        tile_index = self.get_tile_index_for_type(tile_corner_types, terrain_type)
-                        image = self.terrain_tiles[terrain_type][tile_index]
+                # Find appropriate tile variant based on corner types
+                for terrainType in ALLTERRAINTYPES:
+                    if terrainType in cornerTerrainTypes:
+                        variantIndex = self.calculateTileVariant(cornerTerrainTypes, terrainType)
+                        tileImage = self.terrainImagesets[terrainType][variantIndex]
                         break
-              #  print(terrain_type)
-                # Apply camera offset so tiles shift based on movement
-                screenX = x * TILESIZE + cameraX
-                screenY = y * TILESIZE + cameraY
-                if terrain_type == 4 or terrain_type == 3:
-                    landPositions.append((x*TILESIZE,y*TILESIZE))
-                self.display_surface.blit(image, (screenX,screenY))
-        if not self.gridPositionFound:
-            self.gridPositionFound = True
-            return landPositions
-            
-       
 
-    def get_tile_index_for_type(self, tile_corners, terrain_type):
-        tile_index = 0
-        for power, corner_type in enumerate(tile_corners):
-                if corner_type == terrain_type:
-                    tile_index += 2 ** power
-        return tile_index
+                # Apply camera offset for scrolling effect
+                displayX = xPos * TILESIZE + cameraX
+                displayY = yPos * TILESIZE + cameraY
+                if terrainType == 4 or terrainType == 3:
+                    landCoordinates.append((xPos * TILESIZE, yPos * TILESIZE))
+                
+                self.screen.blit(tileImage, (displayX, displayY))
+        
+        if not self.gridLocationsDetected:
+            self.gridLocationsDetected = True
+            return landCoordinates
+
+    def calculateTileVariant(self, cornerTypes, terrainType):
+        variantCode = 0
+        for bitPosition, cornerType in enumerate(cornerTypes):
+            if cornerType == terrainType:
+                variantCode += 2 ** bitPosition
+        return variantCode
