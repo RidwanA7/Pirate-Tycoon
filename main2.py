@@ -64,9 +64,6 @@ islandSurface = pygame.Surface((islandWidth, islandHeight))
 cameraX, cameraY = 0, 0
 speed = 5
 battleMode = False
-bullets_group = pygame.sprite.Group()  # Group to manage bullets
-playerBullets = pygame.sprite.Group()
-enemyBullets = pygame.sprite.Group()
 activeDisaster = None
 
 #speed settings
@@ -115,8 +112,8 @@ white = (255, 255, 255)
 grey = (128, 128, 128)
 
 #Game Variables
-gold = 999999
-wood = 99999
+gold = 400
+wood = 1
 
 population = 0
 noOfItems = 0
@@ -175,32 +172,26 @@ def generateTrees(landPositions, numTrees):
         treePositions.add(treePos)
     return list(treePositions)  # Convert to list before returning
 
-ISLAND_SIZE = 300  # Base square size
-EDGE_VARIATION = 20  # How much edges can extend/shrink
-GREEN = (0, 100, 0)
-SAND = (194, 178, 128)  # Sand
-islandArea = 5000
-
 def generateWorld(weights, randomSeed = random.randint(1, 100)):
     worldDrawer = WorldDrawer()
-    world = World(WORLD_X, WORLD_Y, randomSeed)
-    tile_map = world.get_tiled_map(weights)
-    return worldDrawer, tile_map, world
+    world = TerrainGenerator(WORLDX, WORLDY, randomSeed)
+    tileMap = world.getTiledMap(weights)
+    return worldDrawer, tileMap, world
 
 weights = [20, 40, 70, 100, 250, 0, 0]
-world_drawer, tile_map, wolrd = generateWorld(weights)
-water = world_drawer.tilesheet.subsurface((208, 176, TILESIZE, TILESIZE))
+worldDrawer, tileMap, world = generateWorld(weights)
+water = worldDrawer.tilesetImage.subsurface((208, 176, TILESIZE, TILESIZE))
 background = pygame.Surface(screen.get_size())
 # Tile the water texture across the background surface
-for y in range(0, WINDOW_HEIGHT, TILESIZE):
-    for x in range(0, WINDOW_WIDTH, TILESIZE):
+for y in range(0, WINDOWHEIGHT, TILESIZE):
+    for x in range(0, WINDOWWIDTH, TILESIZE):
         background.blit(water, (x, y))
 
-landPositions = world_drawer.draw_tiles(tile_map, cameraX, cameraY)
+landPositions = worldDrawer.renderTerrain(tileMap, cameraX, cameraY)
 for x in range(len(landPositions)):
     landPositions[x] = (landPositions[x][0]//20 * 20, landPositions[x][1]//20 * 20)
-lastGoldReductionTime = time.time()
 
+lastGoldReductionTime = time.time()
 numTrees = 15
 treePositions = generateTrees(landPositions, numTrees)
 print("trees")
@@ -320,10 +311,10 @@ def canPlaceDock(gridPosition, landPositions, orientation, gridSize=20, maxDista
 
     # Check all tiles in front of the dock up to maxDistance
     for i in range(gridSize, maxDistance + gridSize, gridSize):
-        check_x = x + direction[0] * (i // gridSize)
-        check_y = y + direction[1] * (i // gridSize)
+        checkX = x + direction[0] * (i // gridSize)
+        checkY = y + direction[1] * (i // gridSize)
 
-        if (check_x, check_y) in landPositions:  # If land is found anywhere in front
+        if (checkX, checkY) in landPositions:  # If land is found anywhere in front
             return False  
 
     return True  # Dock placement is valid if no land is in front
@@ -493,8 +484,8 @@ def drawStatsButton():
     # Draw the button
     pygame.draw.rect(screen, (200, 0, 0), buttonRect)  # Red button
     font = pygame.font.Font(None, 24)
-    button_text = font.render("Stats", True, (255, 255, 255))
-    screen.blit(button_text, (buttonRect.x + 10, buttonRect.y + 10))
+    buttonText = font.render("Stats", True, (255, 255, 255))
+    screen.blit(buttonText, (buttonRect.x + 10, buttonRect.y + 10))
 
 def ToggleStatsDisplay(mouseX, mouseY, showStatsMenu):
     if buttonRect.collidepoint(mouseX, mouseY):
@@ -717,7 +708,7 @@ def generateGoldAtDock(placedItems, gold, cameraX, cameraY, floatingTexts, scree
 
 def drawBoats(screen, cameraX, cameraY, placedItems):
     for boat, dock in dockBoats:
-        if any(dock is item_dict["item"] for item_dict in placedItems):  # Check if dock exists in any dict inside placedItems
+        if any(dock is itemDict["item"] for itemDict in placedItems):  # Check if dock exists in any dict inside placedItems
             boat.draw(screen, cameraX, cameraY)
     for boat in enemyShips:
         boat.draw(screen, cameraX, cameraY)
@@ -993,9 +984,9 @@ def drawMouse(screen, gridSize, cameraX, cameraY, destroyingMode):
 
     # If destroyingMode is active, draw a cross inside the box
     if destroyingMode:
-        cross_color = (255, 0, 0)  # Red cross
-        pygame.draw.line(screen, cross_color, (screenX, screenY), (screenX + gridSize, screenY + gridSize), 3)  # Diagonal \
-        pygame.draw.line(screen, cross_color, (screenX, screenY + gridSize), (screenX + gridSize, screenY), 3)  # Diagonal /
+        crossColor = (255, 0, 0)  # Red cross
+        pygame.draw.line(screen, crossColor, (screenX, screenY), (screenX + gridSize, screenY + gridSize), 3)  # Diagonal \
+        pygame.draw.line(screen, crossColor, (screenX, screenY + gridSize), (screenX + gridSize, screenY), 3)  # Diagonal /
 
 def increaseCropCount(speedMultiplier):
     for group in farmGroups:
@@ -1169,9 +1160,9 @@ def watchTowerShoot(placedItems, enemyPirates):
 
 def randomPirateAttack(gold, lastAttackCheck, enemyAttack):
     currentTime = time.time()
-    if currentTime - lastAttackCheck >= 5:  # Check every 60 seconds
+    if currentTime - lastAttackCheck >= 240:  # Check every 60 seconds
         lastAttackCheck = time.time()  # Reset timer
-        probabilityOfAttack = 100 #min(1.0, 0.5 + gold/200000)
+        probabilityOfAttack = min(1.0, 0.5 + gold/200000)
         if random.random() < probabilityOfAttack and not enemyAttack:
             return True, lastAttackCheck
         else:
@@ -1329,7 +1320,7 @@ UserDataFile = "userData.json"
 
 DBFILE = "users.db"
 
-def init_db():
+def initDb():
     conn = sqlite3.connect(DBFILE)
     cursor = conn.cursor()
     cursor.execute('''
@@ -1356,8 +1347,8 @@ def hashPassword(password):
     salt = bcrypt.gensalt()
     return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')  # Decode to store as a string
 
-def checkPassword(hashed_password, user_password):
-    return bcrypt.checkpw(user_password.encode('utf-8'), hashed_password.encode('utf-8'))
+def checkPassword(hashedPassword, userPassword):
+    return bcrypt.checkpw(userPassword.encode('utf-8'), hashedPassword.encode('utf-8'))
 
 def registerUser(username, password):
     conn = sqlite3.connect(DBFILE)
@@ -1418,7 +1409,7 @@ def loginMenu():
                     password = input("Enter new password: ")
                     success, msg = registerUser(username, password)
                     print(msg)
-init_db()
+initDb()
 
 conn = sqlite3.connect('leaderboard.db')
 cursor = conn.cursor()
@@ -1439,11 +1430,11 @@ def gameCompleteScreen(gold, gameComplete, startTime, playerUsername):
 
         # Check if the player already has a time recorded
         cursor.execute("SELECT completion_time FROM leaderboard WHERE username = ?", (playerUsername,))
-        existing_time = cursor.fetchone()
+        existingTime = cursor.fetchone()
 
-        if existing_time:
-            existing_time = existing_time[0]
-            if completionTime < existing_time:  # Only update if the new time is shorter
+        if existingTime:
+            existingTime = existingTime[0]
+            if completionTime < existingTime:  # Only update if the new time is shorter
                 cursor.execute("UPDATE leaderboard SET completion_time = ? WHERE username = ?", 
                                (completionTime, playerUsername))
         else:
@@ -1456,42 +1447,42 @@ def gameCompleteScreen(gold, gameComplete, startTime, playerUsername):
         screen = pygame.display.set_mode((800, 600))
         font = pygame.font.Font(None, 36)
         
-        popup_active = True
-        while popup_active:
+        popupActive = True
+        while popupActive:
             screen.fill((0, 0, 0))  # Background color
 
             # Retrieve the top 5 fastest completion times
             conn = sqlite3.connect("leaderboard.db")
             cursor = conn.cursor()
             cursor.execute("SELECT username, completion_time FROM leaderboard ORDER BY completion_time ASC LIMIT 5")
-            top_times = cursor.fetchall()
+            topTimes = cursor.fetchall()
             conn.close()
 
-            leaderboard_height = 30 * len(top_times)  # Each entry takes 30px height
-            popup_height = 250 + leaderboard_height  # Adjusting popup height
+            leaderboardHeight = 30 * len(topTimes)  # Each entry takes 30px height
+            popupHeight = 250 + leaderboardHeight  # Adjusting popup height
 
-            popup_rect = pygame.Rect(100, 100, 570, popup_height)  # Adjust height dynamically
-            pygame.draw.rect(screen, (255, 255, 255), popup_rect, border_radius=10)
+            popupRect = pygame.Rect(100, 100, 570, popupHeight)  # Adjust height dynamically
+            pygame.draw.rect(screen, (255, 255, 255), popupRect, borderRadius=10)
 
             # Display message
             text = font.render("Congratulations! You have 1,000,000 coins!", True, (0, 0, 0))
             screen.blit(text, (120, 130))
 
             # Display completion time
-            time_text = font.render(f"Time taken: {int(completionTime // 60)} min {int(completionTime % 60)} sec", True, (0, 0, 0))
-            screen.blit(time_text, (120, 180))
+            timeText = font.render(f"Time taken: {int(completionTime // 60)} min {int(completionTime % 60)} sec", True, (0, 0, 0))
+            screen.blit(timeText, (120, 180))
 
             # Display leaderboard
             screen.blit(font.render("Leaderboard (Fastest times):", True, (0, 0, 0)), (120, 220))
-            for i, (username, time_record) in enumerate(top_times):
-                entry = font.render(f"{i+1}. {username}: {int(time_record // 60)} min {int(time_record % 60)} sec", True, (0, 0, 0))
+            for i, (username, timeRecord) in enumerate(topTimes):
+                entry = font.render(f"{i+1}. {username}: {int(timeRecord // 60)} min {int(timeRecord % 60)} sec", True, (0, 0, 0))
                 screen.blit(entry, (120, 250 + i * 30))
 
             # Position "Continue" button **below** leaderboard
-            continue_y = 270 + leaderboard_height
-            continue_button = pygame.draw.rect(screen, (0, 255, 0), (300, continue_y, 200, 50), border_radius=10)
-            button_text = font.render("Continue", True, (0, 0, 0))
-            screen.blit(button_text, (360, continue_y + 15))
+            continueY = 270 + leaderboardHeight
+            continueButton = pygame.draw.rect(screen, (0, 255, 0), (300, continueY, 200, 50), borderRadius=10)
+            buttonText = font.render("Continue", True, (0, 0, 0))
+            screen.blit(buttonText, (360, continueY + 15))
 
             pygame.display.flip()
 
@@ -1501,8 +1492,8 @@ def gameCompleteScreen(gold, gameComplete, startTime, playerUsername):
                     exit()
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     x, y = event.pos
-                    if continue_button.collidepoint(x, y):  
-                        popup_active = False  # Close the popup when clicked
+                    if continueButton.collidepoint(x, y):  
+                        popupActive = False  # Close the popup when clicked
 
     return gameComplete
 
@@ -1570,9 +1561,9 @@ while run:
     cameraX, cameraY = cameraMovement(keys, cameraX, cameraY, speed)
  
     # Draw the island surface to the screen
-    world_drawer.display_surface.blit(background, (0, 0))
+    worldDrawer.screen.blit(background, (0, 0))
    
-    world_drawer.draw(tile_map, cameraX, cameraY, wait_for_key=False)
+    worldDrawer.draw(tileMap, cameraX, cameraY, waitForKey=False)
    
     drawTrees(screen, treePositions, cameraX, cameraY)  # Draw trees
     
