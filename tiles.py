@@ -1,10 +1,10 @@
-TILESHEET_PATH = r"C:\Users\Study\Pirate Tycoon\images\punyworld-overworld-tileset-perlin.png"
+TILESHEETPATH = r"C:\Users\Study\Pirate Tycoon\images\punyworld-overworld-tileset-perlin.png"
 
-WINDOW_WIDTH    = 800
-WINDOW_HEIGHT   = 600
+WINDOWWIDTH    = 800
+WINDOWHEIGHT   = 600
 TILESIZE        = 16       # tile width/height in pixels in tilesheet
-WORLD_X         = 80 #(WINDOW_WIDTH + TILESIZE - 1) // TILESIZE
-WORLD_Y         = 50 #(WINDOW_HEIGHT + TILESIZE - 1) // TILESIZE
+WORLDX         = 80 #(WINDOW_WIDTH + TILESIZE - 1) // TILESIZE
+WORLDY         = 50 #(WINDOW_HEIGHT + TILESIZE - 1) // TILESIZE
 
 # Terrain types
 OCEAN3 = 0
@@ -17,11 +17,11 @@ SNOW = 6
 
 
 # List of all terrain type, ordered from lower height to higher height
-ALL_TERRAIN_TYPES = [OCEAN3, OCEAN2, OCEAN1, BEACH, GRASS, MOUNTAIN, SNOW]
+ALLTERRAINTYPES = [OCEAN3, OCEAN2, OCEAN1, BEACH, GRASS, MOUNTAIN, SNOW]
 
 
 # All tiles in the tilesheet, for each terrain type in ALL_TERRAIN_TYPES
-TERRAIN_TILES = [
+TERRAINTILES = [
     # Ocean depth level 3 tiles
     [
         (0, 0),  #
