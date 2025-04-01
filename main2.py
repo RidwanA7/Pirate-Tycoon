@@ -23,7 +23,7 @@ import sqlite3
 from tiles import *
 from world import *
 from worldDrawer import *
-
+import bcrypt
 
 def clearLeaderBoard():
     conn = sqlite3.connect("leaderboard.db")
@@ -116,7 +116,7 @@ grey = (128, 128, 128)
 
 #Game Variables
 gold = 999999
-wood = 0
+wood = 99999
 
 population = 0
 noOfItems = 0
@@ -199,9 +199,7 @@ for y in range(0, WINDOW_HEIGHT, TILESIZE):
 landPositions = world_drawer.draw_tiles(tile_map, cameraX, cameraY)
 for x in range(len(landPositions)):
     landPositions[x] = (landPositions[x][0]//20 * 20, landPositions[x][1]//20 * 20)
-#print(landPositions)
 lastGoldReductionTime = time.time()
-#print(landPositions)
 
 numTrees = 15
 treePositions = generateTrees(landPositions, numTrees)
@@ -331,7 +329,8 @@ def canPlaceDock(gridPosition, landPositions, orientation, gridSize=20, maxDista
     return True  # Dock placement is valid if no land is in front
             
 
-def handleMenuClicks(mouseX, mouseY, adjustedMouseX, adjustedMouseY, gold, noOfItems, selectedItem, menuItems, isDock, islandWidth, islandHeight, gridSize, dockBoats, landPositions, wood):
+def handleMenuClicks(mouseX, mouseY, adjustedMouseX, adjustedMouseY, gold, noOfItems, selectedItem, menuItems, isDock,
+                      islandWidth, islandHeight, gridSize, dockBoats, landPositions, wood):
     # Check if the mouse is clicked on a menu item
     for label, rect in speedButtons.items():
         if rect.collidepoint(mouseX, mouseY):
@@ -697,11 +696,12 @@ def generateGoldAtDock(placedItems, gold, cameraX, cameraY, floatingTexts, scree
         dock = item["item"] if isinstance(item["item"], Dock) else None
         if dock:
             if dock.isTimeForReturn(speedMultiplier):
-                gold += dock.goldRate
-                updateIncome(dock.goldRate)
+                goldRate = dock.getGoldRate()
+                gold += goldRate
+                updateIncome(goldRate)
                 dockX, dockY = item["pos"]
                 floatingTexts.append({
-                    "text": f"+{dock.goldRate}$",
+                    "text": f"+{goldRate}$",
                     "x": dockX,
                     "y": dockY - 20,
                     "expiration": (currentTime + 0.5)  # 3 seconds from now
@@ -1169,9 +1169,9 @@ def watchTowerShoot(placedItems, enemyPirates):
 
 def randomPirateAttack(gold, lastAttackCheck, enemyAttack):
     currentTime = time.time()
-    if currentTime - lastAttackCheck >= 240:  # Check every 60 seconds
+    if currentTime - lastAttackCheck >= 5:  # Check every 60 seconds
         lastAttackCheck = time.time()  # Reset timer
-        probabilityOfAttack = min(1.0, 0.5 + gold/200000)
+        probabilityOfAttack = 100 #min(1.0, 0.5 + gold/200000)
         if random.random() < probabilityOfAttack and not enemyAttack:
             return True, lastAttackCheck
         else:
@@ -1327,6 +1327,21 @@ lastGrowTime = time.time()  # Track last tree growth time
 
 UserDataFile = "userData.json"
 
+DBFILE = "users.db"
+
+def init_db():
+    conn = sqlite3.connect(DBFILE)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            username TEXT PRIMARY KEY,
+            password TEXT NOT NULL
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+
 def loadUsers():
     if os.path.exists(UserDataFile):
         with open(UserDataFile, "r") as file:
@@ -1337,17 +1352,43 @@ def saveUsers(users):
     with open(UserDataFile, "w") as file:
         json.dump(users, file)
 
+def hashPassword(password):
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')  # Decode to store as a string
+
+def checkPassword(hashed_password, user_password):
+    return bcrypt.checkpw(user_password.encode('utf-8'), hashed_password.encode('utf-8'))
+
 def registerUser(username, password):
-    users = loadUsers()
-    if username in users:
+    conn = sqlite3.connect(DBFILE)
+    cursor = conn.cursor()
+    
+    # Check if user already exists
+    cursor.execute("SELECT username FROM users WHERE username = ?", (username,))
+    if cursor.fetchone():
+        conn.close()
         return False, "User already exists!"
-    users[username] = password
-    saveUsers(users)
+
+    hashedPassword = hashPassword(password)
+
+    # Insert new user into the database
+    cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, hashedPassword))
+    conn.commit()
+    conn.close()
+
     return True, "Registration successful!"
 
 def loginUser(username, password):
-    users = loadUsers()
-    if username in users and users[username] == password:
+    conn = sqlite3.connect(DBFILE)
+    cursor = conn.cursor()
+
+    # Fetch user data
+    cursor.execute("SELECT password FROM users WHERE username = ?", (username,))
+    result = cursor.fetchone()
+    
+    conn.close()
+    
+    if result and checkPassword(result[0], password):
         return True, "Login successful!"
     return False, "Invalid username or password."
 
@@ -1377,16 +1418,10 @@ def loginMenu():
                     password = input("Enter new password: ")
                     success, msg = registerUser(username, password)
                     print(msg)
-
+init_db()
 
 conn = sqlite3.connect('leaderboard.db')
 cursor = conn.cursor()
-
-# Create table if it doesn't exist
-cursor.execute('''CREATE TABLE IF NOT EXISTS leaderboard (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username TEXT,
-                    completion_time REAL)''')
 
 conn.commit()
 conn.close()
