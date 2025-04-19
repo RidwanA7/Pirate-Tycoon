@@ -15,8 +15,8 @@ class Boat(pygame.sprite.Sprite):
         self.returning = False
         self.speedSet = False
 
-    def updateSpeed(self, speedMultiplier):
-        self.speed = self.baseSpeed * speedMultiplier
+    def updateSpeed(self):
+        self.speed = self.baseSpeed
     
     def isAtTarget(self, targetPos, tolerance=10):
         # Returns True if the boat is within the tolerance distance from the target position
