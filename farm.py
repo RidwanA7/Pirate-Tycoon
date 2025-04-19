@@ -39,9 +39,9 @@ class FarmGroup:
     def getCoordinates(self):
         return self.coordinates
 
-    def generateCrops(self, speedMultiplier):
+    def generateCrops(self):
         currentTime = pygame.time.get_ticks()
-        adjustedSpeed = self.baseSpeed * speedMultiplier  # Adjust crop generation speed by multiplier
+        adjustedSpeed = self.baseSpeed   # Adjust crop generation speed by multiplier
         if currentTime - self.lastCropTime >= 1000 / adjustedSpeed:  # Generate crops every second
             self.cropCount += len(self.farms)
             self.lastCropTime = currentTime
@@ -55,6 +55,11 @@ class FarmGroup:
             textSurface = font.render(text, True, (255, 255, 255))
             textRect = textSurface.get_rect(center=(centerX + cameraX, centerY + cameraY - 20))
             screen.blit(textSurface, textRect)
+
+    def removeFarm(self, farm):
+        if farm in self.farms:
+            self.farms.remove(farm)
+
 
 
     
