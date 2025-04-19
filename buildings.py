@@ -21,6 +21,8 @@ class Building(pygame.sprite.Sprite):
         self.upgradeCost = 30
         self.price = price
     
+    def applyUpgrade(self):
+        pass
 
     def isAvailable(self):
         return len(self.visitors) < self.capacity
@@ -134,24 +136,24 @@ class Building(pygame.sprite.Sprite):
     
     def drawHealthBar(self, screen, cameraX, cameraY):
          # Calculate health bar width
-        bar_width = self.rect.width
-        bar_height = 5
-        health_ratio = self.health / self.maxHealth
-        health_bar_width = int(bar_width * health_ratio)
+        barWidth = self.rect.width
+        barHeight = 5
+        healthRatio = self.health / self.maxHealth
+        healthBarWidth = int(barWidth * healthRatio)
 
         # Define health bar positions
-        bar_x = self.rect.x + cameraX
-        bar_y = self.rect.y - bar_height - 2 + cameraY # Position it above the building
+        barX = self.rect.x + cameraX
+        barY = self.rect.y - barHeight - 2 + cameraY # Position it above the building
 
         # Draw background bar (red)
-        pygame.draw.rect(screen, (255, 0, 0), (bar_x, bar_y, bar_width, bar_height))
+        pygame.draw.rect(screen, (255, 0, 0), (barX, barY, barWidth, barHeight))
 
         # Draw health bar (green)
-        pygame.draw.rect(screen, (0, 255, 0), (bar_x, bar_y, health_bar_width, bar_height))
+        pygame.draw.rect(screen, (0, 255, 0), (barX, barY, healthBarWidth, barHeight))
 
         # Hide health bar after 2 seconds
-        current_time = time.time()
-        if current_time - self.healthBarStartTime > 2:
+        currentTime = time.time()
+        if currentTime - self.healthBarStartTime > 2:
             self.showHealthBar = False
 
     def draw(self, screen, cameraX, cameraY):
@@ -161,6 +163,4 @@ class Building(pygame.sprite.Sprite):
         # Draw the health bar if it should be displayed
         if self.showHealthBar:
             self.drawHealthBar(screen, cameraX, cameraY)
-
-    
 
