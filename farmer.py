@@ -5,8 +5,6 @@ from cookhouse import Cookhouse
 from collections import deque
 from restuarant import Restaurant
 
-#new
-
 class Farmer(pygame.sprite.Sprite):
     def __init__(self, position):
         super().__init__()
@@ -33,24 +31,24 @@ class Farmer(pygame.sprite.Sprite):
 
     def drawHealthBar(self, screen, cameraX, cameraY):
          # Calculate health bar width
-        bar_width = self.rect.width
-        bar_height = 5
-        health_ratio = self.health / self.maxHealth
-        health_bar_width = int(bar_width * health_ratio)
+        barWidth = self.rect.width
+        barHeight = 5
+        healthRatio = self.health / self.maxHealth
+        healthBarWidth = int(barWidth * healthRatio)
 
         # Define health bar positions
-        bar_x = self.rect.x + cameraX
-        bar_y = self.rect.y - bar_height - 2 + cameraY # Position it above the building
+        barX = self.rect.x + cameraX
+        barY = self.rect.y - barHeight - 2 + cameraY # Position it above the building
 
         # Draw background bar (red)
-        pygame.draw.rect(screen, (255, 0, 0), (bar_x, bar_y, bar_width, bar_height))
+        pygame.draw.rect(screen, (255, 0, 0), (barX, barY, barWidth, barHeight))
 
         # Draw health bar (green)
-        pygame.draw.rect(screen, (0, 255, 0), (bar_x, bar_y, health_bar_width, bar_height))
+        pygame.draw.rect(screen, (0, 255, 0), (barX, barY, healthBarWidth, barHeight))
 
         # Hide health bar after 2 seconds
-        current_time = time.time()
-        if current_time - self.healthBarStartTime > 2:
+        currentTime = time.time()
+        if currentTime - self.healthBarStartTime > 2:
             self.showHealthBar = False
     
     def checkBuildingAtEnd(self, pathGrid, placedItems):
@@ -94,12 +92,6 @@ class Farmer(pygame.sprite.Sprite):
                     neighbor not in visited):
                     queue.append(neighbor)
                     visited.add(neighbor)
-                    
-            # Optional: Add debug print statements
-            #print(f"Current position: {current}")
-            #print(f"Queue size: {len(queue)}")
-            #print(f"Visited positions: {len(visited)}")
-            
         return None
 
     def assignFarmerRole(self, pathGrid, placedItems):
@@ -112,13 +104,12 @@ class Farmer(pygame.sprite.Sprite):
             self.role = None  # No valid role found; farmer won't move
 
     def findPath(self, start, target, pathGrid):
-        """Finds the shortest path using BFS."""
         queue = deque([start])
         visited = set()
         visited.add(start)
         parent = {start: None}
 
-        GRID_STEP = self.speed
+        GRIDSTEP = self.speed
         targetFound = False
         finalPos = None
 
@@ -131,10 +122,10 @@ class Farmer(pygame.sprite.Sprite):
                 break
 
             neighbors = [
-                (current[0], current[1] - GRID_STEP),  # Up
-                (current[0] + GRID_STEP, current[1]),  # Right
-                (current[0], current[1] + GRID_STEP),  # Down
-                (current[0] - GRID_STEP, current[1])   # Left
+                (current[0], current[1] - GRIDSTEP),  # Up
+                (current[0] + GRIDSTEP, current[1]),  # Right
+                (current[0], current[1] + GRIDSTEP),  # Down
+                (current[0] - GRIDSTEP, current[1])   # Left
             ]
 
             for neighbor in neighbors:
@@ -198,21 +189,16 @@ class Farmer(pygame.sprite.Sprite):
     def hasAPath(self, target, pathGrid, gridSize=20):
         start = (self.position[0] // gridSize * gridSize, self.position[1] // gridSize * gridSize)
         end = (target.position[0] // gridSize * gridSize, target.position[1] // gridSize * gridSize)
-
          # Check if start is within 20 pixels of end
         if ((start[0] - end[0]) ** 2 + (start[1] - end[1]) ** 2) ** 0.5 <= 20:
             return True
-
         queue = deque([start])
         visited = set()
         visited.add(start)
-
         while queue:
             current = queue.popleft()
-
             if ((current[0] - end[0]) ** 2 + (current[1] - end[1]) ** 2) ** 0.5 <= 20:
                 return True
-
             # Get neighbors (up, down, left, right)
             neighbors = [
                 (current[0] + gridSize, current[1]),
@@ -220,12 +206,10 @@ class Farmer(pygame.sprite.Sprite):
                 (current[0], current[1] + gridSize),
                 (current[0], current[1] - gridSize)
             ]
-          
             for neighbor in neighbors:
                 if neighbor in pathGrid and pathGrid[neighbor] and neighbor not in visited:
                     queue.append(neighbor)
                     visited.add(neighbor)
-
         return False
 
     def isAtFarm(self, farm):
