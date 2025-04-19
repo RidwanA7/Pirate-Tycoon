@@ -7,7 +7,6 @@ from tent import Tent
 from restuarant import Restaurant
 from farm import Farm, FarmGroup
 from cookhouse import Cookhouse
-from map import TileKind, Map
 from farmer import Farmer
 import time
 from path import Path, Land
@@ -21,24 +20,13 @@ from woodChopperHut import WoodChopperHut, WoodChopper
 import json
 import os
 import sqlite3
-
-#new
-
-def clearLeaderBoard():
-    conn = sqlite3.connect("leaderboard.db")
-    cursor = conn.cursor()
-    
-    cursor.execute("DELETE FROM leaderboard;")  # Delete all rows
-    conn.commit()
-    conn.close()
-    
-    print("Leaderboard data cleared!")
-
-#clearLeaderBoard()
+from tiles import *
+from world import *
+from worldDrawer import *
+import bcrypt
 
 #Game Settings
 pygame.init()
-
 
 screenWidth = 800
 screenHeight = 600
@@ -50,8 +38,9 @@ maxZoom = 2.0
 zoomStep = 0.1
 gridSize = 20
 
-islandWidth = 600   #1600
-islandHeight = 600  #1200
+dayLength = 1  # seconds
+islandWidth = 600   
+islandHeight = 600  
 noiseScale = 100
 seed = random.randint(0, 1000)
 # Initialise Perlin noise generator
@@ -59,34 +48,14 @@ noise1 = PerlinNoise(octaves=4, seed=seed)
 noise2 = PerlinNoise(octaves=8, seed=seed + 1)
 islandSurface = pygame.Surface((islandWidth, islandHeight))
 
-#island.fill((0, 100, 0))
 cameraX, cameraY = 0, 0
 speed = 5
 battleMode = False
-bullets_group = pygame.sprite.Group()  # Group to manage bullets
-playerBullets = pygame.sprite.Group()
-enemyBullets = pygame.sprite.Group()
 activeDisaster = None
-
-#speed settings
-slow = 60
-medium = 45
-fast = 30
 
 #stats button
 buttonRect = pygame.Rect(200, 10, 60, 40)  # Button position and size (x, y, width, height)
 showStatsMenu = False  # Track if the stats menu should be displayed
-
-dayLength = slow
-speedMultipliers = { slow: 1.0, medium: 1.5, fast: 2.0} 
-speedMultiplier = speedMultipliers[dayLength]
-speedLabels = { slow: "Slow", medium: "Medium", fast: "Fast" }
-# Speed settings positions
-speedButtons = {
-    "Slow": pygame.Rect(700, 10, 80, 30),
-    "Medium": pygame.Rect(700, 50, 80, 30),
-    "Fast": pygame.Rect(700, 90, 80, 30),
-}
 
 lastAttackCheck = time.time()
 
@@ -114,8 +83,8 @@ white = (255, 255, 255)
 grey = (128, 128, 128)
 
 #Game Variables
-gold = 999999
-wood = 0
+gold = 700
+wood = 3
 
 population = 0
 noOfItems = 0
@@ -174,60 +143,28 @@ def generateTrees(landPositions, numTrees):
         treePositions.add(treePos)
     return list(treePositions)  # Convert to list before returning
 
-ISLAND_SIZE = 300  # Base square size
-EDGE_VARIATION = 20  # How much edges can extend/shrink
-GREEN = (34, 139, 34)
-islandArea = 5000
+def generateWorld(weights, randomSeed = random.randint(1, 100)):
+    worldDrawer = WorldDrawer()
+    world = TerrainGenerator(WORLDX, WORLDY, randomSeed)
+    tileMap = world.getTiledMap(weights)
+    return worldDrawer, tileMap, world
 
-def generateIsland(WIDTH, HEIGHT, scale=80, threshold=0, stepSize=20):
-    """Creates a large, single green island using Perlin noise with a circular mask."""
-    island_surface = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-    island_surface.fill((0,0,0,0))  # Default to water
+weights = [20, 40, 70, 100, 250, 0, 0]
+worldDrawer, tileMap, world = generateWorld(weights)
+water = worldDrawer.tilesetImage.subsurface((208, 176, TILESIZE, TILESIZE))
+background = pygame.Surface(screen.get_size())
+# Tile the water texture across the background surface
+for y in range(0, WINDOWHEIGHT, TILESIZE):
+    for x in range(0, WINDOWWIDTH, TILESIZE):
+        background.blit(water, (x, y))
 
-    noise = PerlinNoise(octaves=3, seed=random.randint(0, 10000))
-
-    center_x, center_y = WIDTH // 2, HEIGHT // 2
-    max_distance = min(WIDTH, HEIGHT) // 2  # Radius of the island
-
-    land_positions = []
-
-    for y in range(0, HEIGHT, stepSize):
-        for x in range(0, WIDTH, stepSize):
-            nx = x / scale
-            ny = y / scale
-            noise_value = noise([nx, ny])  # Get Perlin noise value
-
-            # Circular mask: distance from center determines land probability
-            distance = math.sqrt((x - center_x) ** 2 + (y - center_y) ** 2)
-            falloff = max(0, 1 - (distance / max_distance) ** 2)  # Quadratic falloff
-
-            # Combine Perlin noise with falloff
-            final_value = noise_value * falloff
-
-            if final_value > threshold:
-                pygame.draw.rect(island_surface, GREEN, (x, y, stepSize, stepSize))
-                land_positions.append((x, y))  # Store land positions
-
-    # Step 2: Fill in the gaps by expanding land
-    for _ in range(3):  # Expand land a few times
-        new_land_positions = land_positions.copy()  # Copy existing land
-        for x, y in land_positions:
-            for dx, dy in [(-stepSize, 0), (stepSize, 0), (0, -stepSize), (0, stepSize)]:
-                new_x, new_y = x + dx, y + dy
-                if 0 <= new_x < WIDTH and 0 <= new_y < HEIGHT:
-                    new_land_positions.append((new_x, new_y))  # Expand land
-                    pygame.draw.rect(island_surface, GREEN, (new_x, new_y, stepSize, stepSize))
-        land_positions = new_land_positions    
-    return island_surface, land_positions
-
-island, landPositions = generateIsland(1600, 800)
+landPositions = worldDrawer.renderTerrain(tileMap, cameraX, cameraY)
 for x in range(len(landPositions)):
     landPositions[x] = (landPositions[x][0]//20 * 20, landPositions[x][1]//20 * 20)
-lastGoldReductionTime = time.time()
 
+lastGoldReductionTime = time.time()
 numTrees = 15
 treePositions = generateTrees(landPositions, numTrees)
-
 
 def updateExpenses(amount):
     global currentMonthExpenses
@@ -344,21 +281,17 @@ def canPlaceDock(gridPosition, landPositions, orientation, gridSize=20, maxDista
 
     # Check all tiles in front of the dock up to maxDistance
     for i in range(gridSize, maxDistance + gridSize, gridSize):
-        check_x = x + direction[0] * (i // gridSize)
-        check_y = y + direction[1] * (i // gridSize)
+        checkX = x + direction[0] * (i // gridSize)
+        checkY = y + direction[1] * (i // gridSize)
 
-        if (check_x, check_y) in landPositions:  # If land is found anywhere in front
+        if (checkX, checkY) in landPositions:  # If land is found anywhere in front
             return False  
 
     return True  # Dock placement is valid if no land is in front
             
 
-def handleMenuClicks(mouseX, mouseY, adjustedMouseX, adjustedMouseY, gold, noOfItems, selectedItem, menuItems, isDock, islandWidth, islandHeight, gridSize, dockBoats, landPositions, wood):
-    # Check if the mouse is clicked on a menu item
-    for label, rect in speedButtons.items():
-        if rect.collidepoint(mouseX, mouseY):
-            return gold, placedItems, selectedItem, isDock, noOfItems, landPositions, wood  # Skip item placement if inside speed button
-        
+def handleMenuClicks(mouseX, mouseY, adjustedMouseX, adjustedMouseY, gold, noOfItems, selectedItem, menuItems, isDock,
+                      islandWidth, islandHeight, gridSize, dockBoats, landPositions, wood):   
     for item in menuItems:
         if item["rect"].collidepoint(mouseX, mouseY):
             selectedItem = item["item"]
@@ -506,7 +439,7 @@ def handleMenuClicks(mouseX, mouseY, adjustedMouseX, adjustedMouseY, gold, noOfI
                         if selectedItem == 'watchTower':
                             SelectedItem = WatchTower([adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize], menuPrices[selectedItem])
                         if selectedItem == 'woodChopperHut':
-                            SelectedItem = WoodChopperHut([adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize], menuPrices[selectedItem], treePositions)
+                            SelectedItem = WoodChopperHut([adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize], menuPrices[selectedItem], treePositions, landPositions)
                         placedItems.append(
                             {"item": SelectedItem, "pos": (adjustedMouseX//gridSize * gridSize, adjustedMouseY//gridSize * gridSize), "orientation": "normal"})
                         floatingTexts.append({"text": f"-{menuPrices[selectedItem]}$", "x": adjustedMouseX, "y": adjustedMouseY, "expiration": currentTime + 1})
@@ -516,8 +449,8 @@ def drawStatsButton():
     # Draw the button
     pygame.draw.rect(screen, (200, 0, 0), buttonRect)  # Red button
     font = pygame.font.Font(None, 24)
-    button_text = font.render("Stats", True, (255, 255, 255))
-    screen.blit(button_text, (buttonRect.x + 10, buttonRect.y + 10))
+    buttonText = font.render("Stats", True, (255, 255, 255))
+    screen.blit(buttonText, (buttonRect.x + 10, buttonRect.y + 10))
 
 def ToggleStatsDisplay(mouseX, mouseY, showStatsMenu):
     if buttonRect.collidepoint(mouseX, mouseY):
@@ -605,33 +538,6 @@ def drawStatsDisplay(showStatsMenu, profitLog, currentMonthIncome, currentMonthE
         drawGraph(previousProfitHistory, graphX, graphY, graphWidth, graphHeight, "Prev Month Profit")
         drawGraph(currentProfitHistory, graphX + 300, graphY, graphWidth, graphHeight, "Curr Month Profit")
 
-def displayTimeSpeedSettings():
-    for label, rect in speedButtons.items():
-        # Draw button background
-        pygame.draw.rect(screen, Green if speedLabels[dayLength] == label else Brown, rect)
-        # Render the text
-        textSurface = font.render(label, True, White)
-        textRect = textSurface.get_rect(center=rect.center)
-        screen.blit(textSurface, textRect)
-
-def handleSpeedButtonClick(mouseX, mouseY):
-    global dayLength
-    global speedMultiplier
-    global speedMultipliers
-    for label, rect in speedButtons.items():
-        if rect.collidepoint(mouseX, mouseY):
-            # Update the timespeed based on the clicked button
-            if label == "Slow":
-                dayLength = slow
-                speedMultiplier = speedMultipliers[dayLength]
-            elif label == "Medium":
-                dayLength = medium
-                speedMultiplier = speedMultipliers[dayLength]
-            elif label == "Fast":
-                dayLength = fast
-                speedMultiplier = speedMultipliers[dayLength]
-            break
-
 def updateDate():
     global currentDate, dayStartTime
     currentTime = time.time()
@@ -655,16 +561,6 @@ def showFloatingTexts(screen, floatingTexts, cameraX, cameraY, font):
         else:
             floatingTexts.remove(text)  # Remove expired texts
 
-def updateSpeeds(boatAndPirate, placedItems, speedMultiplier):
-    for boat,pirate in boatAndPirate:
-        if pirate is not None:
-            pirate.speed =  pirate.baseSpeed * speedMultiplier 
-        boat.speed = boat.baseSpeed * speedMultiplier
-    for farmer in placedItems:
-        if isinstance(farmer["item"], Farmer):
-            farmer = farmer["item"]
-            farmer.speed = farmer.baseSpeed * speedMultiplier
-        
     
 def cameraMovement(keys, cameraX, cameraY, speed):
     if keys[pygame.K_LEFT]:
@@ -713,17 +609,18 @@ def drawDock(cameraX, cameraY, dock, orientation, scaledX, scaledY, zoomLevel, i
     labelRect = dockLabel.get_rect(center=rotatedRect.center)
     screen.blit(dockLabel, labelRect)
 
-def generateGoldAtDock(placedItems, gold, cameraX, cameraY, floatingTexts, screen, speedMultiplier):
+def generateGoldAtDock(placedItems, gold, cameraX, cameraY, floatingTexts, screen):
     currentTime = time.time()
     for item in placedItems:
         dock = item["item"] if isinstance(item["item"], Dock) else None
         if dock:
-            if dock.isTimeForReturn(speedMultiplier):
-                gold += dock.goldRate
-                updateIncome(dock.goldRate)
+            if dock.isTimeForReturn():
+                goldRate = dock.getGoldRate()
+                gold += goldRate
+                updateIncome(goldRate)
                 dockX, dockY = item["pos"]
                 floatingTexts.append({
-                    "text": f"+{dock.goldRate}$",
+                    "text": f"+{goldRate}$",
                     "x": dockX,
                     "y": dockY - 20,
                     "expiration": (currentTime + 0.5)  # 3 seconds from now
@@ -739,7 +636,7 @@ def generateGoldAtDock(placedItems, gold, cameraX, cameraY, floatingTexts, scree
 
 def drawBoats(screen, cameraX, cameraY, placedItems):
     for boat, dock in dockBoats:
-        if any(dock is item_dict["item"] for item_dict in placedItems):  # Check if dock exists in any dict inside placedItems
+        if any(dock is itemDict["item"] for itemDict in placedItems):  # Check if dock exists in any dict inside placedItems
             boat.draw(screen, cameraX, cameraY)
     for boat in enemyShips:
         boat.draw(screen, cameraX, cameraY)
@@ -844,14 +741,12 @@ def spawnBoat(noOfItems, boatAndPirate, population, cameraX, cameraY, enemiesArr
         newBoat = Boat([800, -1100], "none")
         boatAndPirate.append((newBoat, None))
         noOfItems = 0
-
       # Move the boat towards the entrance dock
     for i, (boat, pirate) in enumerate(boatAndPirate):
-        boat.updateSpeed(speedMultiplier)
+        boat.updateSpeed()
         boat.moveTowards((800, 20))
         if boat.active:
             boat.draw(screen, cameraX, cameraY)
-
         # Spawn the pirate only when the boat is no longer active
         if not boat.active and pirate is None: 
             newPirate = Pirate((810,30), 0)
@@ -860,14 +755,12 @@ def spawnBoat(noOfItems, boatAndPirate, population, cameraX, cameraY, enemiesArr
             newPirate.sleep = 100
             boatAndPirate[i] = (boat, newPirate)  # Update tuple with the new pirate
             population += 1
-
         if boat.active:
             boatRect = (boat.position[0] + cameraX, boat.position[1] + cameraY, 30, 10)
             pygame.draw.rect(screen, Red, boatRect)
-
     if enemyAttack:
         for boat in enemyShips:
-            boat.updateSpeed(speedMultiplier)
+            boat.updateSpeed()
             boat.moveTowards((800, 760))
             if boat.active:
                 boat.draw(screen, cameraX, cameraY)
@@ -876,7 +769,6 @@ def spawnBoat(noOfItems, boatAndPirate, population, cameraX, cameraY, enemiesArr
             else:
                 enemyShips.remove(boat)
                 piratesSpawned = True
-
     return noOfItems, boatAndPirate, population, enemiesArriving, enemyAttack, piratesSpawned
 
 def findClosestObject(placedItems, pirate):
@@ -903,9 +795,9 @@ def findClosestObject(placedItems, pirate):
 def findNearestItem():
     pass
 
-def piratePayment(pirate, gold,speedMultiplier, landPositions, treePositions):
+def piratePayment(pirate, gold, landPositions, treePositions):
     currentTime = time.time()
-    payment = pirate.update(speedMultiplier, placedItems, landPositions, treePositions)
+    payment = pirate.update(placedItems, landPositions, treePositions)
     if payment > 0:
         gold += payment
         updateIncome(payment)
@@ -923,7 +815,7 @@ def checkSatisfaction(boatAndPirate, population, gold, floatingTexts):
                 updateExpenses(100)
     return population, gold, boatAndPirate, floatingTexts
 
-def updatePirates(boatAndPirate, placedItems, gold, speedMutiplier, population, floatingTexts, enemyAttack, piratesOnIsland, landPositions, treePositions):
+def updatePirates(boatAndPirate, placedItems, gold, population, floatingTexts, enemyAttack, piratesOnIsland, landPositions, treePositions):
     for boat,pirate in boatAndPirate:
         if pirate is not None:
             if pirate.health <= 0:
@@ -938,14 +830,14 @@ def updatePirates(boatAndPirate, placedItems, gold, speedMutiplier, population, 
             pirate.draw(screen, cameraX, cameraY, zoomLevel)
             pirate.findEnemies(enemyPirates)
             population, gold, boatAndPirate, floatingTexts = checkSatisfaction(boatAndPirate, population, gold, floatingTexts)
-            pirate.updateSpeed(speedMultiplier)
+            pirate.updateSpeed()
             if pirate.enemy is not None:
                 if pirate.isAtObject([pirate.enemy.rect.x, pirate.enemy.rect.y]):
                     pirate.attack()
                 else:
                     pirate.moveTowards([pirate.enemy.rect.x, pirate.enemy.rect.y], landPositions, treePositions)
             else:
-                gold, boatAndPirate  = piratePayment(pirate, gold, speedMultiplier, landPositions, treePositions)
+                gold, boatAndPirate  = piratePayment(pirate, gold, landPositions, treePositions)
         
     for enemy in enemyPirates:
         if enemy.health <= 0:
@@ -1015,18 +907,17 @@ def drawMouse(screen, gridSize, cameraX, cameraY, destroyingMode):
 
     # If destroyingMode is active, draw a cross inside the box
     if destroyingMode:
-        cross_color = (255, 0, 0)  # Red cross
-        pygame.draw.line(screen, cross_color, (screenX, screenY), (screenX + gridSize, screenY + gridSize), 3)  # Diagonal \
-        pygame.draw.line(screen, cross_color, (screenX, screenY + gridSize), (screenX + gridSize, screenY), 3)  # Diagonal /
+        crossColor = (255, 0, 0)  # Red cross
+        pygame.draw.line(screen, crossColor, (screenX, screenY), (screenX + gridSize, screenY + gridSize), 3)  # Diagonal \
+        pygame.draw.line(screen, crossColor, (screenX, screenY + gridSize), (screenX + gridSize, screenY), 3)  # Diagonal /
 
-def increaseCropCount(speedMultiplier):
+def increaseCropCount():
     for group in farmGroups:
-        group.generateCrops(speedMultiplier)  # Generate crops for the group
+        group.generateCrops()  # Generate crops for the group
         group.drawCropCount(screen, font, cameraX, cameraY)  # Display crop count
 
 def groupFarms(farm, farmGroups):
     connectedGroups = []
-
     # Find all groups connected to the newly added farm
     for group in farmGroups:
         if any(areAdjacent(farm, otherFarm) for otherFarm in group.farms):
@@ -1045,11 +936,7 @@ def groupFarms(farm, farmGroups):
         newGroup = FarmGroup()
         newGroup.addFarm(farm)
         farmGroups.append(newGroup)
-     # Debug: Print coordinates of farms in groups
-    #for group in farmGroups:
-     #   print("Farm Group Coordinates:", group.getCoordinates())
-
-
+  
 def mergeGroups(targetGroup, farmGroups):
     # Merge all overlapping groups into the target group
     for group in farmGroups[:]:  # Use a copy of the list to modify while iterating
@@ -1308,7 +1195,7 @@ def removeFarmFromGroup(farm, farmGroups):
 
 def drawTrees(screen, treePositions, cameraX, cameraY):
     treeColor = (139, 69, 19)  # Green color for trees
-    treeImage = pygame.image.load(r"C:\Users\Study\Pirate Tycoon\images\grassv2.png")  # Load tree image
+    treeImage = pygame.image.load(r"C:\Users\Study\Pirate Tycoon\images\tree.png")  # Load tree image
     treeImage = pygame.transform.scale(treeImage, (20, 20))  # Resize to 20x20 pixels
     for tree in treePositions:
          screen.blit(treeImage, (tree[0] + cameraX, tree[1] + cameraY))  # Draw the tree
@@ -1347,67 +1234,115 @@ def growTrees(landPositions, treePositions, lastGrowTime):
 
 lastGrowTime = time.time()  # Track last tree growth time
 
-UserDataFile = "userData.json"
+DBFILE = "users.db"
 
-def loadUsers():
-    if os.path.exists(UserDataFile):
-        with open(UserDataFile, "r") as file:
-            return json.load(file)
-    return {}
+def initDb():
+    conn = sqlite3.connect(DBFILE)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            username TEXT PRIMARY KEY,
+            password TEXT NOT NULL
+        )
+    ''')
+    conn.commit()
+    conn.close()
 
-def saveUsers(users):
-    with open(UserDataFile, "w") as file:
-        json.dump(users, file)
+
+def hashPassword(password):
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')  # Decode to store as a string
+
+def checkPassword(hashedPassword, userPassword):
+    return bcrypt.checkpw(userPassword.encode('utf-8'), hashedPassword.encode('utf-8'))
 
 def registerUser(username, password):
-    users = loadUsers()
-    if username in users:
-        return False, "User already exists!"
-    users[username] = password
-    saveUsers(users)
-    return True, "Registration successful!"
+    if not username.strip() or not password.strip():
+        return False, "Username/password cannot be empty!"
+    try:
+        conn = sqlite3.connect(DBFILE)
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT username FROM users WHERE username = ?", (username,))
+        if cursor.fetchone():
+            return False, "User already exists!"
+
+        hashedPassword = hashPassword(password)
+
+        cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, hashedPassword))
+        conn.commit()
+        return True, "Registration successful!"
+    
+    except sqlite3.Error as e:
+        return False, f"Database error: {e}"
+    except Exception as e:
+        return False, f"Unexpected error: {e}"
+    finally:
+        conn.close()
 
 def loginUser(username, password):
-    users = loadUsers()
-    if username in users and users[username] == password:
-        return True, "Login successful!"
-    return False, "Invalid username or password."
+    try:
+        conn = sqlite3.connect(DBFILE)
+        cursor = conn.cursor()
+
+        # Fetch user data
+        cursor.execute("SELECT password FROM users WHERE username = ?", (username,))
+        result = cursor.fetchone()
+
+        if result and checkPassword(result[0], password):
+            return True, "Login successful!"
+        return False, "Invalid username or password."
+
+    except sqlite3.Error as e:
+        return False, f"Database error: {e}"
+    except Exception as e:
+        return False, f"Unexpected error: {e}"
+    finally:
+        conn.close()  # Ensure connection is closed
 
 def loginMenu():
     while True:
-        screen.fill((50, 50, 50))
-        title = font.render("Press L to Login or R to Register", True, (255, 255, 255))
-        screen.blit(title, (200, 250))
-        pygame.display.flip()
-        
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                exit()
+        try:
+            screen.fill((50, 50, 50))
+            title = font.render("Press L to Login or R to Register", True, (255, 255, 255))
+            screen.blit(title, (200, 250))
+            pygame.display.flip()
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    exit()
+
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_l:  # Login
+                        try:
+                            username = input("Enter username: ")
+                            password = input("Enter password: ")
+                            success, msg = loginUser(username, password)
+                            print(msg)
+                            if success:
+                                return username
+                        except Exception as e:
+                            print(f"Error during login input: {e}")
+
+                    elif event.key == pygame.K_r:  # Register
+                        try:
+                            username = input("Enter new username: ")
+                            password = input("Enter new password: ")
+                            success, msg = registerUser(username, password)
+                            print(msg)
+                        except Exception as e:
+                            print(f"Error during registration input: {e}")
+
+        except pygame.error as e:
+            print(f"Pygame rendering error: {e}")
+        except Exception as e:
+            print(f"Unexpected error in login menu: {e}")
             
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_l:  # Login
-                    username = input("Enter username: ")
-                    password = input("Enter password: ")
-                    success, msg = loginUser(username, password)
-                    print(msg)
-                    if success:
-                        return username
-                
-                elif event.key == pygame.K_r:  # Register
-                    username = input("Enter new username: ")
-                    password = input("Enter new password: ")
-                    success, msg = registerUser(username, password)
-                    print(msg)
+initDb()
 
 conn = sqlite3.connect('leaderboard.db')
 cursor = conn.cursor()
-
-# Create table if it doesn't exist
-cursor.execute('''CREATE TABLE IF NOT EXISTS leaderboard (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username TEXT,
-                    completion_time REAL)''')
 
 conn.commit()
 conn.close()
@@ -1425,11 +1360,11 @@ def gameCompleteScreen(gold, gameComplete, startTime, playerUsername):
 
         # Check if the player already has a time recorded
         cursor.execute("SELECT completion_time FROM leaderboard WHERE username = ?", (playerUsername,))
-        existing_time = cursor.fetchone()
+        existingTime = cursor.fetchone()
 
-        if existing_time:
-            existing_time = existing_time[0]
-            if completionTime < existing_time:  # Only update if the new time is shorter
+        if existingTime:
+            existingTime = existingTime[0]
+            if completionTime < existingTime:  # Only update if the new time is shorter
                 cursor.execute("UPDATE leaderboard SET completion_time = ? WHERE username = ?", 
                                (completionTime, playerUsername))
         else:
@@ -1442,42 +1377,42 @@ def gameCompleteScreen(gold, gameComplete, startTime, playerUsername):
         screen = pygame.display.set_mode((800, 600))
         font = pygame.font.Font(None, 36)
         
-        popup_active = True
-        while popup_active:
+        popupActive = True
+        while popupActive:
             screen.fill((0, 0, 0))  # Background color
 
             # Retrieve the top 5 fastest completion times
             conn = sqlite3.connect("leaderboard.db")
             cursor = conn.cursor()
             cursor.execute("SELECT username, completion_time FROM leaderboard ORDER BY completion_time ASC LIMIT 5")
-            top_times = cursor.fetchall()
+            topTimes = cursor.fetchall()
             conn.close()
 
-            leaderboard_height = 30 * len(top_times)  # Each entry takes 30px height
-            popup_height = 250 + leaderboard_height  # Adjusting popup height
+            leaderboardHeight = 30 * len(topTimes)  # Each entry takes 30px height
+            popupHeight = 250 + leaderboardHeight  # Adjusting popup height
 
-            popup_rect = pygame.Rect(100, 100, 570, popup_height)  # Adjust height dynamically
-            pygame.draw.rect(screen, (255, 255, 255), popup_rect, border_radius=10)
+            popupRect = pygame.Rect(100, 100, 570, popupHeight)  # Adjust height dynamically
+            pygame.draw.rect(screen, (255, 255, 255), popupRect)
 
             # Display message
             text = font.render("Congratulations! You have 1,000,000 coins!", True, (0, 0, 0))
             screen.blit(text, (120, 130))
 
             # Display completion time
-            time_text = font.render(f"Time taken: {int(completionTime // 60)} min {int(completionTime % 60)} sec", True, (0, 0, 0))
-            screen.blit(time_text, (120, 180))
+            timeText = font.render(f"Time taken: {int(completionTime // 60)} min {int(completionTime % 60)} sec", True, (0, 0, 0))
+            screen.blit(timeText, (120, 180))
 
             # Display leaderboard
             screen.blit(font.render("Leaderboard (Fastest times):", True, (0, 0, 0)), (120, 220))
-            for i, (username, time_record) in enumerate(top_times):
-                entry = font.render(f"{i+1}. {username}: {int(time_record // 60)} min {int(time_record % 60)} sec", True, (0, 0, 0))
+            for i, (username, timeRecord) in enumerate(topTimes):
+                entry = font.render(f"{i+1}. {username}: {int(timeRecord // 60)} min {int(timeRecord % 60)} sec", True, (0, 0, 0))
                 screen.blit(entry, (120, 250 + i * 30))
 
             # Position "Continue" button **below** leaderboard
-            continue_y = 270 + leaderboard_height
-            continue_button = pygame.draw.rect(screen, (0, 255, 0), (300, continue_y, 200, 50), border_radius=10)
-            button_text = font.render("Continue", True, (0, 0, 0))
-            screen.blit(button_text, (360, continue_y + 15))
+            continueY = 270 + leaderboardHeight
+            continueButton = pygame.draw.rect(screen, (0, 255, 0), (300, continueY, 200, 50))
+            buttonText = font.render("Continue", True, (0, 0, 0))
+            screen.blit(buttonText, (360, continueY + 15))
 
             pygame.display.flip()
 
@@ -1487,16 +1422,35 @@ def gameCompleteScreen(gold, gameComplete, startTime, playerUsername):
                     exit()
                 if event.type == pygame.MOUSEBUTTONDOWN:
                     x, y = event.pos
-                    if continue_button.collidepoint(x, y):  
-                        popup_active = False  # Close the popup when clicked
+                    if continueButton.collidepoint(x, y):  
+                        popupActive = False  # Close the popup when clicked
 
     return gameComplete
+
+def clearUsersTable():
+    conn = sqlite3.connect(DBFILE)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM users")  # Delete all rows
+    conn.commit()
+    conn.close()
+
+def clear_leaderboard():
+    conn = sqlite3.connect('leaderboard.db')
+    cursor = conn.cursor()
+
+    # Delete all rows from the leaderboard table
+    cursor.execute("DELETE FROM leaderboard")
+
+    conn.commit()
+    conn.close()
+    print("Leaderboard cleared.")
 
 temp = False
 
 gameComplete = False
 startTime = time.time()
 run = True
+
 while run:
     currentTime = time.time()
 
@@ -1509,9 +1463,10 @@ while run:
 
             if event.type == pygame.MOUSEBUTTONDOWN:
                 mouseX, mouseY = pygame.mouse.get_pos()
+                if (mouseX//20 * 20, mouseY//20 * 20) in landPositions:
+                    print("land")
                 adjustedMouseX, adjustedMouseY = adjustMouseCoordinates(mouseX, mouseY, cameraX, cameraY, zoomLevel)
-                print("mouse",adjustedMouseX, adjustedMouseY)
-                handleSpeedButtonClick(mouseX, mouseY)
+               # print("mouse",adjustedMouseX, adjustedMouseY)
                 handlePickaxeClicks()
                 showStatsMenu = ToggleStatsDisplay(mouseX, mouseY, showStatsMenu)
                 if not destroyingMode:
@@ -1547,24 +1502,23 @@ while run:
                                                     placedItems.remove(farmer)  # Remove the farmer
                             break  # Exit after removing the item
     
-
-
     keys = pygame.key.get_pressed()
     cameraX, cameraY = cameraMovement(keys, cameraX, cameraY, speed)
-
-    screen.fill((0, 105, 148))  # Fill screen with water color
+ 
     # Draw the island surface to the screen
-    screen.blit(island, (cameraX, cameraY))
-
+    worldDrawer.screen.blit(background, (0, 0))
+   
+    worldDrawer.draw(tileMap, cameraX, cameraY, waitForKey=False)
+   
     drawTrees(screen, treePositions, cameraX, cameraY)  # Draw trees
     
     noOfItems, boatAndPirate, population, enemiesArriving, enemyAttack, piratesSpawned = spawnBoat(noOfItems, boatAndPirate, population, cameraX, cameraY, enemiesArriving, enemyAttack, piratesSpawned) #moves boat towards entrance
     drawPlacedItems(placedItems, cameraX, cameraY, zoomLevel)
     showFloatingTexts(screen, floatingTexts, cameraX, cameraY, font)
-    increaseCropCount(speedMultiplier)
+    increaseCropCount()
     updateFoodCount()
     moveFarmer(placedItems, pathGrid, screen, cameraX, cameraY)
-    gold = generateGoldAtDock(placedItems, gold, cameraX, cameraY, floatingTexts, screen, speedMultiplier)
+    gold = generateGoldAtDock(placedItems, gold, cameraX, cameraY, floatingTexts, screen)
     boatsAtDock(dockBoats, timer)
     drawBoats(screen, cameraX, cameraY, placedItems)
 
@@ -1581,7 +1535,7 @@ while run:
             gold -= 10
     enemyAttack, shipAdded = enemyArriveAtIsland(enemyShips, shipAdded, enemyAttack)
     enemyAttack, piratesSpawned, piratesOnIsland = enemyPiratesSpawn(enemyPirates,(810//20 * 20, 750// 20 * 20), enemyAttack, piratesSpawned, piratesOnIsland, gold)
-    gold, boatAndPirate, population, floatingTexts, enemyAttack, piratesOnIsland = updatePirates(boatAndPirate, placedItems, gold, speedMultiplier, population, floatingTexts, enemyAttack, piratesOnIsland, landPositions, treePositions) #updates pirates movements and payments when interacting with palcedItems
+    gold, boatAndPirate, population, floatingTexts, enemyAttack, piratesOnIsland = updatePirates(boatAndPirate, placedItems, gold, population, floatingTexts, enemyAttack, piratesOnIsland, landPositions, treePositions) #updates pirates movements and payments when interacting with palcedItems
     watchTowerShoot(placedItems, enemyPirates)
 
     updateWoodChopperHuts(screen, cameraX, cameraY, placedItems)
@@ -1590,8 +1544,12 @@ while run:
         activeDisaster = triggerNaturalDisaster(landPositions, radius=150)
         nextStrikeTime = activeDisaster["startTime"] + activeDisaster["warningTime"]  # Set first strike time
 
-        # Schedule the next disaster (4 to 6 minutes later)
-        nextDisasterTime = currentTime + random.randint(240, 360)
+        # Schedule the next disaster based on gold 
+        goldFactor = max(0, min(gold // 1000, 100))  # scale gold influence, cap at 100
+        reducedMaxTime = 360 - goldFactor  # max time decreases with more gold
+        reducedMinTime = 240 - (goldFactor // 2)  # min time also slightly decreases
+        nextDisasterTime = currentTime + random.randint(reducedMinTime, reducedMaxTime)
+
     
     # Draw warning circle before disaster hits
     drawDisasterWarning(screen, cameraX, cameraY, activeDisaster)
@@ -1626,8 +1584,6 @@ while run:
     drawPickaxeButton(screen)
     updateDate()
     displayDate(screen, font)
-    displayTimeSpeedSettings()
-    updateSpeeds(boatAndPirate, placedItems, speedMultiplier)
     updateDateAndProfit()
     drawStats(gold, population, White)
     drawStatsButton()
