@@ -3,8 +3,7 @@ import random
 import time
 from restuarant import Restaurant
 import math
-from enemy import Node, calculate_path, move_along_path
-
+from enemy import Node, calculatePath, moveAlongPath
 
 class Pirate:
     def __init__(self, position, payment):
@@ -38,8 +37,8 @@ class Pirate:
         self.healthBarStartTime = 0  
         self.beingAttacked = False
 
-    def updateSpeed(self, speedMultiplier):
-        self.speed = self.baseSpeed * speedMultiplier
+    def updateSpeed(self):
+        self.speed = self.baseSpeed
 
     def moveTowards(self, targetPosition, landPositions, treePositions, gridSize=20):
         if self.enemy:
@@ -50,36 +49,40 @@ class Pirate:
 
 
         if not hasattr(self, 'path') or not self.path or \
-        self.targetPos != getattr(self, 'last_target', None):
+        self.targetPos != getattr(self, 'lastTarget', None):
             if currentTime - getattr(self, 'lastTime', 0) > 5:
-                self.lastTime = currentTime
-    
-    
-             
-                start_pos = (self.rect.x//gridSize * gridSize, self.rect.y//gridSize * gridSize)
-                self.path = calculate_path(start_pos, self.targetPos, landPositions, treePositions, gridSize) 
-                self.last_target = self.targetPos
+                self.lastTime = currentTime             
+                startPos = (self.rect.x//gridSize * gridSize, self.rect.y//gridSize * gridSize)
+                try:
+                    self.path = calculatePath(startPos, self.targetPos, landPositions, treePositions, gridSize) 
+                except (ValueError, IndexError) as e:
+                    print(f"Path calculation error: {e}")
+                    self.path = []
+                except Exception as e:
+                    print(f"Unexpected error in path calculation: {e}")
+                    self.path = []
+                self.lastTarget = self.targetPos
         
         if self.path:
-            current_waypoint = self.path[0]
-            if (abs(self.position[0] - current_waypoint[0]) < 4 and 
-                abs(self.position[1] - current_waypoint[1]) < 4):
+            currentWaypoint = self.path[0]
+            if (abs(self.position[0] - currentWaypoint[0]) < 4 and 
+                abs(self.position[1] - currentWaypoint[1]) < 4):
                 self.path.pop(0)
             
-            move_along_path(self, self.path, gridSize)
+            moveAlongPath(self, self.path, gridSize)
             self.position = [self.rect.centerx, self.rect.centery]
 
-    def updatePirateStats(self, speedMultiplier):
+    def updatePirateStats(self):
         if time.time() - self.satisfactionTimeDecrease >= 1:
-            self.hunger = max(0, self.hunger - (4*speedMultiplier))
-            self.sleep = max(0, self.sleep - (1*speedMultiplier))
+            self.hunger = max(0, self.hunger - (4))
+            self.sleep = max(0, self.sleep - (1))
             self.satisfactionTimeDecrease = time.time()
 
-    def checkCooldown(self, speedMultiplier):
+    def checkCooldown(self):
         if self.objectCooldownEnd and time.time() > self.objectCooldownEnd:
             self.inCooldown = False
 
-    def pay(self, objectType, object, speedMultiplier):
+    def pay(self, objectType, object):
         self.inCooldown = True
         self.objectCooldownEnd = time.time() + 10  # 10-second cooldown
         self.nearObject = False
@@ -93,7 +96,7 @@ class Pirate:
             currentTime = time.time()  # Get the current time
 
             # Check if 5 seconds have passed
-            if currentTime - self.sleepIncrementStartTime >= (5 / speedMultiplier):
+            if currentTime - self.sleepIncrementStartTime >= (5):
                 
                 self.sleep = 100  # Set sleep to 100 after 5 seconds
                 self.sleepIncrementCompleted = True  # Mark the increment as complete
@@ -103,8 +106,6 @@ class Pirate:
                 if hasattr(self, 'visitedTent'):
                         del self.visitedTent  # Reset the flag when moving away
                         object.removeVisitor(self)  # Remove the visitor from the restaurant
-     #           self.last_target = None
-      #          del self.path
 
         elif objectType == "Restaurant":
             if object.food >= 2:
@@ -115,7 +116,7 @@ class Pirate:
                 currentTime = time.time()  # Get the current time
 
                 # Check if 5 seconds have passed
-                if currentTime - self.hungerIncrementStartTime >= (3 / speedMultiplier):
+                if currentTime - self.hungerIncrementStartTime >= (3):
                     self.hunger = 100  # Set hunger to 100 after 5 seconds
                     self.payment = object.payment  # Payment after the wait
                     object.food -= 2  # Deduct food from the restaurant
@@ -133,13 +134,13 @@ class Pirate:
 
     def move(self, landPositions, treePositions, gridSize=20):
         # Calculate the potential new position
-        new_position = [self.position[0] + self.direction[0] * self.speed, 
+        newPosition = [self.position[0] + self.direction[0] * self.speed, 
                     self.position[1] + self.direction[1] * self.speed]
-        gridPosition = (new_position[0] // gridSize * gridSize, new_position[1] // gridSize * gridSize)
+        gridPosition = (newPosition[0] // gridSize * gridSize, newPosition[1] // gridSize * gridSize)
     
         # Ensure the new position is within landPositions
         if tuple(gridPosition) in landPositions and tuple(gridPosition) not in treePositions:
-            self.position = new_position
+            self.position = newPosition
             self.rect.centerx, self.rect.centery = self.position
         # Randomly change direction occasionally
         if random.random() < 0.02:
@@ -204,7 +205,7 @@ class Pirate:
             else:
                 return False
     
-    def update(self,speedMultiplier, placedItems, landPositions, treePositions):
+    def update(self, placedItems, landPositions, treePositions):
         self.payment = 0
         self.updateStates()
         if self.state == "exploring":
@@ -221,9 +222,9 @@ class Pirate:
                     if not hasattr(self, 'visitedRestaurant'):  # Ensure 'addVisitor' is only called once
                         itemObject.addVisitor(self)
                         self.visitedRestaurant = True  # Set a flag to avoid multiple calls
-                    self.payment = self.pay("Restaurant", itemObject, speedMultiplier)
+                    self.payment = self.pay("Restaurant", itemObject)
                 if self.payment>0:
-                    self.last_target = None
+                    self.lastTarget = None
                     del self.path
                 else:
                     self.moveTowards(restaurantPosition, landPositions, treePositions)
@@ -240,15 +241,15 @@ class Pirate:
                         itemObject.addVisitor(self)
                         self.visitedTent = True  # Set a flag to avoid multiple calls
                 if self.isAtObject(tentPosition):
-                    self.payment = self.pay("Tent", itemObject, speedMultiplier)
+                    self.payment = self.pay("Tent", itemObject)
                 else:
                     self.moveTowards(tentPosition, landPositions, treePositions)
                 if self.payment>0:
-                    self.last_target = None
+                    self.lastTarget = None
                     del self.path
 
         if not self.atItem:
-            self.updatePirateStats(speedMultiplier)
+            self.updatePirateStats()
         
         return self.payment
     
@@ -289,24 +290,24 @@ class Pirate:
     
     def drawHealthBar(self, screen, cameraX, cameraY):
          # Calculate health bar width
-        bar_width = self.rect.width
-        bar_height = 5
-        health_ratio = self.health / self.maxHealth
-        health_bar_width = int(bar_width * health_ratio)
+        barWidth = self.rect.width
+        barHeight = 5
+        healthRatio = self.health / self.maxHealth
+        healthBarWidth = int(barWidth * healthRatio)
 
         # Define health bar positions
-        bar_x = self.rect.x + cameraX
-        bar_y = self.rect.y - bar_height - 2 + cameraY # Position it above the building
+        barX = self.rect.x + cameraX
+        barY = self.rect.y - barHeight - 2 + cameraY # Position it above the building
 
         # Draw background bar (red)
-        pygame.draw.rect(screen, (255, 0, 0), (bar_x, bar_y, bar_width, bar_height))
+        pygame.draw.rect(screen, (255, 0, 0), (barX, barY, barWidth, barHeight))
 
         # Draw health bar (green)
-        pygame.draw.rect(screen, (0, 255, 0), (bar_x, bar_y, health_bar_width, bar_height))
+        pygame.draw.rect(screen, (0, 255, 0), (barX, barY, healthBarWidth, barHeight))
 
         # Hide health bar after 2 seconds
-        current_time = time.time()
-        if current_time - self.healthBarStartTime > 2:
+        currentTime = time.time()
+        if currentTime - self.healthBarStartTime > 2:
             self.showHealthBar = False
 
     def draw(self, screen, cameraX, cameraY, zoomLevel):
