@@ -1,6 +1,7 @@
 import time
 import pygame
 from buildings import Building
+import math
 
 class Dock(Building):
     def __init__(self, size, position, orientation, price):
@@ -30,6 +31,7 @@ class Dock(Building):
         elif self.size == "large":
             self.upgradeCost = 700000
         self.boatAdded = False
+        self.globalDemandFactor = 1.0  
 
 
     def setGoldRate(self):
@@ -42,7 +44,7 @@ class Dock(Building):
 
     def setReturnFrequency(self):
         if self.size == "small":
-            return 1 #30 seconds
+            return 1    #30 seconds
         elif self.size == "medium":
             return 60
         elif self.size == "large":
@@ -89,11 +91,29 @@ class Dock(Building):
             else:
                 self.__goldRate += 100000
                 self.upgradeCost += 300000
-
+    
+    def updateDemandFactor(self, population, totalDocks):
+        if totalDocks == 0:
+            self.globalDemandFactor = 1.0
+        else:
+            # more pirates means more demand, more docks means more supply
+            demandRatio = population / (totalDocks * 10)
+            self.globalDemandFactor = min(1.0, max(0.1, demandRatio))
+    
+    def updateReturnFrequencyBasedOnSatisfaction(self, avgSatisfaction):
+        # As satisfaction drops, boats return more frequently (try to compensate)
+        if avgSatisfaction < 40:
+            self.__returnFrequency = max(1, self.__returnFrequency - 5)    
+        elif avgSatisfaction > 80:
+            self.__returnFrequency += 5
 
     # Getter methods to access encapsulated attributes
     def getGoldRate(self):
-        return self.__goldRate
+         # Simulates diminishing returns with a sigmoid curve
+        baseRate = self.__goldRate
+        demand = self.globalDemandFactor
+        logisticFactor = 1 / (1 + math.exp(-0.1 * (demand * 10 - 5)))  # Scales between 0 and 1
+        return int(baseRate * logisticFactor)
 
     def getReturnFrequency(self):
         return self.__returnFrequency
