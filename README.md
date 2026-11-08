@@ -30,7 +30,7 @@ python3 -m venv .venv
 
 Activate it on macOS or Linux:
 
-```sh`
+```sh
 source .venv/bin/activate
 ```
 
@@ -46,9 +46,7 @@ Install the dependencies:
 python -m pip install pygame perlin-noise numpy bcrypt
 ```
 
-**Before launching:** the current checkout needs the module and asset fixes described below. Installing the dependencies alone is insufficient to run it.
-
-After addressing those issues, launch the main game from the project directory:
+Launch the main game from the project directory:
 
 ```sh
 python main.py
@@ -84,13 +82,3 @@ Keep the terminal open: registration and login collect your username and passwor
 | `main2.py`, `backup.py` | Alternative and backup game scripts. |
 | `test.py` | A terrain demonstration that references an older world API. |
 | `*.png`, `*.jpg` | Included image assets; additional referenced images are missing. |
-
-## Known issues and local data
-
-- **Module filename:** `main.py` imports `woodChopperHut`, but its source is named `woodChopperHut.pt`. Rename it to `woodChopperHut.py` so Python can import it.
-- **Image paths:** image loading uses absolute Windows paths under `C:\Users\Study\...`, including `TILESHEETPATH` in `tiles.py`. Update these references to point to assets on your machine, preferably using paths relative to the project.
-- **Missing images:** referenced assets absent from this checkout include `tree.png`, `captain.png`, `watchTower.png`, `woodChopper.png`, `woodChopperHut.png`, `1675450476_luffy-sprite.png`, and the boat sprite `d68usui-ef6c334e-11b7-4f75-88b9-ecd34c5d4bf0.png`. Supply these images or update the source to use suitable replacements.
-- **Filename casing:** Git tracks both `Dock.py`/`dock.py` and `Pirate.py`/`pirate.py`. These names can conflict on filesystems that ignore case; the main script uses the lowercase imports.
-- **Leaderboard initialization:** `main.py` opens `leaderboard.db` but does not create the `leaderboard` table before querying it. Initialize a table with `username` and `completion_time` columns before using the completion screen.
-- **Local storage:** accounts are stored in `users.db`, and completion times use `leaderboard.db`, both relative to the working directory. The main script does not implement saving or restoring an island between sessions.
-- **Tests:** there is no configured automated test suite. `test.py` references outdated names such as `World`, while `world.py` defines `TerrainGenerator`; it needs updating before use.
